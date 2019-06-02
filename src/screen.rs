@@ -351,7 +351,7 @@ impl Screen {
             line_index -= 1;
         }
         // Error message.
-        if self.error.is_some() {
+        if let Some(ref _error) = self.error {
             if line_index == index {
                 return self.render_error(changes, line_index);
             }
@@ -399,7 +399,7 @@ impl Screen {
                             .set_background(AnsiColor::Silver)
                             .clone(),
                     ));
-                    let s: String = format!(" {:>1$} ", line_index + 1, lw).into();
+                    let s: String = format!(" {:>1$} ", line_index + 1, lw);
                     changes.push(Change::Text(s));
                     changes.push(Change::AllAttributes(CellAttributes::default()));
                     end -= lw + 2;
@@ -462,10 +462,10 @@ impl Screen {
         if !self.file.loaded() {
             let frame_index = (self.animation_start.elapsed().subsec_millis() / 200) as usize;
             let frame = ["•    ", " •   ", "  •  ", "   • ", "    •"][frame_index];
-            changes.push(Change::Text(format!("  {} ", frame).into()));
+            changes.push(Change::Text(format!("  {} ", frame)));
             width -= 8;
         } else {
-            changes.push(Change::Text(format!("  ").into()));
+            changes.push(Change::Text("  ".to_string()));
             width -= 2;
         }
 
@@ -488,22 +488,21 @@ impl Screen {
             let info = self.file.info();
             let info_width = info.width();
             if info_width > 0 && info_width + 2 < left_width {
-                changes.push(Change::Text(
-                    format!(
-                        "{1:0$.0$} {2} ",
-                        left_width - info_width - 2,
-                        self.file.title(),
-                        info
-                    )
-                    .into(),
-                ));
+                changes.push(Change::Text(format!(
+                    "{1:0$.0$} {2} ",
+                    left_width - info_width - 2,
+                    self.file.title(),
+                    info
+                )));
             } else {
-                changes.push(Change::Text(
-                    format!("{1:0$.0$} ", left_width - 1, self.file.title()).into(),
-                ));
+                changes.push(Change::Text(format!(
+                    "{1:0$.0$} ",
+                    left_width - 1,
+                    self.file.title()
+                )));
             }
         } else if left_width == 1 {
-            changes.push(Change::Text(" ".into()));
+            changes.push(Change::Text(" ".to_string()));
         }
 
         // Write the right-hand-side if it fits.

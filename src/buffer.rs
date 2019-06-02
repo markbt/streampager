@@ -46,7 +46,7 @@ impl Buffer {
     }
 
     /// Returns the writable portion of the buffer
-    pub(crate) fn write<'buffer>(&'buffer self) -> BufferWrite<'buffer> {
+    pub(crate) fn write(&self) -> BufferWrite<'_> {
         BufferWrite {
             buffer: self,
             _guard: self.lock.lock().unwrap(),

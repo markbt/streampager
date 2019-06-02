@@ -327,9 +327,7 @@ fn is_tty(fd: &impl AsRawFd) -> bool {
 /// Parse a file description and title specification.
 ///
 /// Parses `FD[=TITLE]` and returns the FD and the optional title.
-fn parse_fd_title<'a>(
-    fd_spec: &'a str,
-) -> Result<(RawFd, Option<&'a str>), <RawFd as FromStr>::Err> {
+fn parse_fd_title(fd_spec: &str) -> Result<(RawFd, Option<&str>), <RawFd as FromStr>::Err> {
     if let Some(eq) = fd_spec.find('=') {
         Ok((fd_spec[..eq].parse::<RawFd>()?, Some(&fd_spec[eq + 1..])))
     } else {
@@ -343,7 +341,7 @@ fn parse_fd_title<'a>(
 /// If the file has finished loading and the file fits on the screen, returns
 /// true.  Otherwise, returns false.
 fn wait_for_screenful<T: Terminal>(
-    files: &Vec<File>,
+    files: &[File],
     term: &mut T,
     events: &mut EventStream,
     load_delay: time::Duration,
@@ -376,7 +374,7 @@ fn wait_for_screenful<T: Terminal>(
 }
 
 /// Returns true if the given files fit on a screen of dimensions `w` x `h`.
-fn files_fit(files: &Vec<File>, w: usize, h: usize) -> bool {
+fn files_fit(files: &[File], w: usize, h: usize) -> bool {
     let mut wrapped_lines = 0;
     for file in files.iter() {
         let lines = file.lines();

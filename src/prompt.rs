@@ -10,6 +10,8 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::display::Action;
 use crate::screen::Screen;
 
+type PromptRunFn = FnMut(&mut Screen, &str) -> Result<Option<Action>, Error>;
+
 /// A prompt for input from the user.
 pub(crate) struct Prompt {
     /// The text of the prompt to display to the user.
@@ -25,15 +27,12 @@ pub(crate) struct Prompt {
     position: usize,
 
     /// The closure to run when the user presses Return.  Will only be called once.
-    run: Option<Box<FnMut(&mut Screen, &str) -> Result<Option<Action>, Error>>>,
+    run: Option<Box<PromptRunFn>>,
 }
 
 impl Prompt {
     /// Create a new prompt.
-    pub(crate) fn new(
-        prompt: &str,
-        run: Box<FnMut(&mut Screen, &str) -> Result<Option<Action>, Error>>,
-    ) -> Prompt {
+    pub(crate) fn new(prompt: &str, run: Box<PromptRunFn>) -> Prompt {
         Prompt {
             prompt: prompt.to_string(),
             value: Vec::new(),

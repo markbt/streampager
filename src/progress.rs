@@ -64,8 +64,8 @@ impl Progress {
                     Ok(len) => {
                         buffer.truncate(len - 1);
                         let mut newlines = Vec::new();
-                        for i in 0..len - 1 {
-                            if buffer[i] == b'\n' {
+                        for (i, byte) in buffer.iter().enumerate().take(len - 1) {
+                            if *byte == b'\n' {
                                 newlines.push(i);
                             }
                         }

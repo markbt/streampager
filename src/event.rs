@@ -116,9 +116,9 @@ impl EventStream {
 
         // A wake event was received.  Get the event from the event stream.
         match self.recv.try_recv() {
-            Ok(envelope) => return Ok(Some(self.receive(envelope))),
-            Err(mpsc::TryRecvError::Empty) => return Ok(None),
-            Err(e) => return Err(e.into()),
+            Ok(envelope) => Ok(Some(self.receive(envelope))),
+            Err(mpsc::TryRecvError::Empty) => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 }

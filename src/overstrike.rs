@@ -40,8 +40,8 @@ impl Overstrike {
 
     /// Add SGR control sequences to `out` sufficient to switch from the `prev`
     /// overstrike style to this overstrike style.
-    fn add_control_sequence(&self, prev: Overstrike, out: &mut String) {
-        match (prev, *self) {
+    fn add_control_sequence(self, prev: Overstrike, out: &mut String) {
+        match (prev, self) {
             (Overstrike::Normal, Overstrike::Bold) => out.push_str("\x1B[1m"),
             (Overstrike::Normal, Overstrike::Underline) => out.push_str("\x1B[4m"),
             (Overstrike::Normal, Overstrike::BoldUnderline) => out.push_str("\x1B[1;4m"),
@@ -155,7 +155,7 @@ fn convert_unicode_span(input: &str) -> String {
 /// `"text in {bold-on}bold{bold-off} or {ul-on}lined{ul-off}"` (where
 /// `\b` is a backspace and the text in braces is the corresponding SGR
 /// sequence).
-pub(crate) fn convert_overstrike<'a>(input: &'a [u8]) -> Cow<'a, [u8]> {
+pub(crate) fn convert_overstrike(input: &[u8]) -> Cow<'_, [u8]> {
     if input.contains(&b'\x08') {
         let mut data = Vec::new();
         let mut input = input;
@@ -167,7 +167,7 @@ pub(crate) fn convert_overstrike<'a>(input: &'a [u8]) -> Cow<'a, [u8]> {
                 }
                 Err(error) => {
                     let (valid, after_valid) = input.split_at(error.valid_up_to());
-                    if valid.len() > 0 {
+                    if !valid.is_empty() {
                         data.extend_from_slice(
                             convert_unicode_span(unsafe { str::from_utf8_unchecked(valid) })
                                 .as_bytes(),

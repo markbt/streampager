@@ -188,8 +188,13 @@ impl FileData {
                 let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
                 for block in 0..blocks {
                     let mut newlines = meta.newlines.write().unwrap();
-                    for i in block * BUFFER_SIZE..min((block + 1) * BUFFER_SIZE, len) {
-                        if data[i] == b'\n' {
+                    for (i, byte) in data
+                        .iter()
+                        .enumerate()
+                        .skip(block * BUFFER_SIZE)
+                        .take(BUFFER_SIZE)
+                    {
+                        if *byte == b'\n' {
                             newlines.push(i);
                         }
                     }

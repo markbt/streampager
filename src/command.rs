@@ -26,7 +26,7 @@ pub(crate) fn goto() -> Prompt {
                     _ => {}
                 }
                 let lines = screen.file.lines() as isize;
-                if value.chars().last() == Some('%') {
+                if value.ends_with('%') {
                     // Percentage
                     match str::parse::<isize>(&value[..value.len() - 1]) {
                         Ok(value_percent) => {

@@ -192,18 +192,15 @@ fn write_truncated(
                     offset += w;
                 }
             }
-            let start_index = start_index.unwrap_or(text.len());
-            let end_index = end_index.unwrap_or(text.len());
-            changes.push(Change::Text(
-                format!(
-                    "{0:1$.1$}{3}{0:2$.2$}",
-                    "",
-                    start_gap,
-                    end_gap,
-                    &text[start_index..end_index]
-                )
-                .into(),
-            ));
+            let start_index = start_index.unwrap_or_else(|| text.len());
+            let end_index = end_index.unwrap_or_else(|| text.len());
+            changes.push(Change::Text(format!(
+                "{0:1$.1$}{3}{0:2$.2$}",
+                "",
+                start_gap,
+                end_gap,
+                &text[start_index..end_index]
+            )));
         }
     }
     Ok(position + text_width)
@@ -381,10 +378,8 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
                     text_start = None;
                 }
                 spans.push(span);
-            } else {
-                if text_start.is_none() {
-                    text_start = Some(index);
-                }
+            } else if text_start.is_none() {
+                text_start = Some(index);
             }
         }
         if let Some(start) = text_start {
@@ -404,7 +399,7 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
             }
             Err(error) => {
                 let (valid, after_valid) = input.split_at(error.valid_up_to());
-                if valid.len() > 0 {
+                if !valid.is_empty() {
                     unsafe {
                         parse_unicode_span(
                             str::from_utf8_unchecked(valid),
