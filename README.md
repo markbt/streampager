@@ -95,8 +95,8 @@ is equivalent to the previous example.
 
 * **Cursor Keys**: Move one line or four columns.
 * **`Shift` + Cursor Keys**: Move one quarter of the screen.
-* **`Page Up`** and **`Page Down`**: Move a full screen up or down.
-* **`Backspace`** and **`Space`**: Move a full screen up or down.
+* **`Page Down`** or **`Space`**: Move a full page down.
+* **`Page Up`**, **`Backspace`** or **`b`**: Move a full page up.
 * **`Home`** and **`End`**: Move to the top or bottom of the file.
 * **`:`**: Go to a line number or percentage through the file.
 * **`[`** and **`]`**: Switch to the previous or next file.
