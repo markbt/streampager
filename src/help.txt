@@ -3,31 +3,31 @@
 
   [1;4mGeneral[m
 
-    [1mq[m                      Quit
-    [1m?[2m or [1mh[m                 Show this help
-    [1mEsc[m                    Close help or any open prompt
+    [1mq[m                         Quit
+    [1m?[2m or [1mh[m                    Show this help
+    [1mEsc[m                       Close help or any open prompt
 
   [1;4mNavigation[m
 
-    [1mCursor Keys[m            Move one line or four columns
-    [1mShift + Cursor Keys[m    Move one quarter of the screen
-    [1mPage Up[2m and [1mPage Down[m  Move a full screen up or down
-    [1mBackspace[2m and [1mSpace[m    Move a full screen up or down
-    [1mHome[2m and [1mEnd[m           Move to the top or bottom of the file
-    [1m:[m                      Move to a line number or percentage
-    [1m[[2m and [1m][m                Switch to the previous or next file
+    [1mCursor Keys[m               Move one line or four columns
+    [1mShift + Cursor Keys[m       Move one quarter of the screen
+    [1mPage Down[2m or [1mSpace[m        Move a full page down
+    [1mPage Up[2m, [1mBackspace[2m or [1mb[m   Move a full page up
+    [1mHome[2m and [1mEnd[m              Move to the top or bottom of the file
+    [1m:[m                         Move to a line number or percentage
+    [1m[[2m and [1m][m                   Switch to the previous or next file
 
   [1;4mPresentation[m
 
-    [1m#[m                      Toggle display of line numbers
+    [1m#[m                         Toggle display of line numbers
 
   [1;4mSearching[m
 
-    [1m/[m                      Search from the top of the file
-    [1m<[2m and [1m>[m                Search backwards or forwards from here
+    [1m/[m                         Search from the top of the file
+    [1m<[2m and [1m>[m                   Search backwards or forwards from here
 
-    [1m.[2m and [1m,[m                Move to the next or previous match
-    [1mn[2m and [1mp[m                Move to the next or previous matching line
-    [1m([2m and [1m)[m                Move to the first or last match
+    [1m.[2m and [1m,[m                   Move to the next or previous match
+    [1mn[2m and [1mp[m                   Move to the next or previous matching line
+    [1m([2m and [1m)[m                   Move to the first or last match
 
 

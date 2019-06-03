@@ -741,7 +741,9 @@ impl Screen {
                     1,
                 ));
             }
-            (Modifiers::NONE, PageUp) | (Modifiers::NONE, Backspace) => {
+            (Modifiers::NONE, PageUp)
+            | (Modifiers::NONE, Backspace)
+            | (Modifiers::NONE, Char('b')) => {
                 self.scroll_up(max(
                     self.rendered_position.height - self.rendered_overlay_height,
                     1,
