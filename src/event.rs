@@ -100,25 +100,31 @@ impl EventStream {
         term: &mut Terminal,
         wait: Option<Duration>,
     ) -> Result<Option<Event>, Error> {
-        // First, try to get an even from the queue.
+        // First, try to get an event from the queue.
         match self.recv.try_recv() {
             Ok(envelope) => return Ok(Some(self.receive(envelope))),
             Err(mpsc::TryRecvError::Empty) => {}
             Err(e) => return Err(e.into()),
         }
 
-        // The queue is empty.  Try to get an input event from the terminal.
-        match term.poll_input(wait)? {
-            Some(InputEvent::Wake) => {}
-            Some(input_event) => return Ok(Some(Event::Input(input_event))),
-            None => return Ok(None),
-        }
+        loop {
+            // The queue is empty.  Try to get an input event from the terminal.
+            match term.poll_input(wait)? {
+                Some(InputEvent::Wake) => {}
+                Some(input_event) => return Ok(Some(Event::Input(input_event))),
+                None => return Ok(None),
+            }
 
-        // A wake event was received.  Get the event from the event stream.
-        match self.recv.try_recv() {
-            Ok(envelope) => Ok(Some(self.receive(envelope))),
-            Err(mpsc::TryRecvError::Empty) => Ok(None),
-            Err(e) => Err(e.into()),
+            // A wake event was received.  Get the event from the event stream.
+            match self.recv.try_recv() {
+                Ok(envelope) => return Ok(Some(self.receive(envelope))),
+                Err(mpsc::TryRecvError::Empty) => {
+                    // The queue was empty.  That means we collected all events
+                    // before their wake event arrived.  Ignore the wake event
+                    // and go back to waiting.
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
     }
 }
