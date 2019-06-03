@@ -8,13 +8,13 @@ use failure::{bail, Error};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
-use std::os::unix::io::AsRawFd;
 use std::os::unix::io::RawFd;
 use std::path::Path;
 use std::str::FromStr;
 use std::time;
 use termwiz::caps::{Capabilities, ProbeHintsBuilder};
 use termwiz::input::InputEvent;
+use termwiz::istty::IsTty;
 use termwiz::surface::{change::Change, Position};
 use termwiz::terminal::{SystemTerminal, Terminal};
 use vec_map::VecMap;
@@ -207,7 +207,7 @@ fn open_files(args: ArgMatches) -> Result<Spec, Error> {
     }
 
     if specs.is_empty() {
-        if is_tty(&std::io::stdin()) {
+        if std::io::stdin().is_tty() {
             bail!("expected filename or piped input");
         }
 
@@ -317,11 +317,6 @@ fn run(mut spec: Spec) -> Result<(), Error> {
         spec.error_files,
         spec.progress,
     )
-}
-
-/// Returns `true` if the given file descriptor is connected to a TTY.
-fn is_tty(fd: &impl AsRawFd) -> bool {
-    unsafe { libc::isatty(fd.as_raw_fd()) == 1 }
 }
 
 /// Parse a file description and title specification.
