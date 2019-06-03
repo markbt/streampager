@@ -853,7 +853,10 @@ impl Screen {
                 self.refresh_overlay();
             }
         }
-        Ok(Some(Action::Render))
+        match &self.pending_refresh {
+            Refresh::None => Ok(None),
+            _ => Ok(Some(Action::Render))
+        }
     }
 
     pub(crate) fn prompt(&mut self) -> &mut Option<Prompt> {
