@@ -857,7 +857,7 @@ impl Screen {
         }
         match &self.pending_refresh {
             Refresh::None => Ok(None),
-            _ => Ok(Some(Action::Render))
+            _ => Ok(Some(Action::Render)),
         }
     }
 
