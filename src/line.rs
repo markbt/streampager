@@ -4,11 +4,14 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cmp::min;
 use std::str;
+use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::escape::csi::{Sgr, CSI};
+use termwiz::escape::osc::OperatingSystemCommand;
 use termwiz::escape::parser::Parser;
 use termwiz::escape::Action;
+use termwiz::hyperlink::Hyperlink;
 use termwiz::surface::{change::Change, Position};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -59,45 +62,53 @@ impl AttributeState {
         }
     }
 
-    /// Apply a new span of escape sequences onto the attribute state.
-    fn apply(&mut self, esc_seq: &[u8]) {
-        let mut parser = Parser::new();
-        parser.parse(esc_seq, |action| {
-            if let Action::CSI(CSI::Sgr(sgr)) = action {
-                match sgr {
-                    Sgr::Reset => self.attrs = CellAttributes::default(),
-                    Sgr::Intensity(intensity) => {
-                        self.attrs.set_intensity(intensity);
-                    }
-                    Sgr::Underline(underline) => {
-                        self.attrs.set_underline(underline);
-                    }
-                    Sgr::Blink(blink) => {
-                        self.attrs.set_blink(blink);
-                    }
-                    Sgr::Italic(italic) => {
-                        self.attrs.set_italic(italic);
-                    }
-                    Sgr::Inverse(inverse) => {
-                        self.attrs.set_reverse(inverse);
-                    }
-                    Sgr::Invisible(invis) => {
-                        self.attrs.set_invisible(invis);
-                    }
-                    Sgr::StrikeThrough(strike) => {
-                        self.attrs.set_strikethrough(strike);
-                    }
-                    Sgr::Foreground(color) => {
-                        self.attrs.set_foreground(color);
-                    }
-                    Sgr::Background(color) => {
-                        self.attrs.set_background(color);
-                    }
-                    Sgr::Font(_) => {}
+    /// Apply a sequence of Sgr escape codes onto the attribute state.
+    fn apply_sgr_sequence(&mut self, sgr_sequence: &[Sgr]) {
+        for sgr in sgr_sequence.iter() {
+            match *sgr {
+                Sgr::Reset => {
+                    // Reset doesn't clear the hyperlink.
+                    let hyperlink = self.attrs.hyperlink.take();
+                    self.attrs = CellAttributes::default();
+                    self.attrs.set_hyperlink(hyperlink);
                 }
-                self.changed = true;
+                Sgr::Intensity(intensity) => {
+                    self.attrs.set_intensity(intensity);
+                }
+                Sgr::Underline(underline) => {
+                    self.attrs.set_underline(underline);
+                }
+                Sgr::Blink(blink) => {
+                    self.attrs.set_blink(blink);
+                }
+                Sgr::Italic(italic) => {
+                    self.attrs.set_italic(italic);
+                }
+                Sgr::Inverse(inverse) => {
+                    self.attrs.set_reverse(inverse);
+                }
+                Sgr::Invisible(invis) => {
+                    self.attrs.set_invisible(invis);
+                }
+                Sgr::StrikeThrough(strike) => {
+                    self.attrs.set_strikethrough(strike);
+                }
+                Sgr::Foreground(color) => {
+                    self.attrs.set_foreground(color);
+                }
+                Sgr::Background(color) => {
+                    self.attrs.set_background(color);
+                }
+                Sgr::Font(_) => {}
             }
-        });
+        }
+        self.changed = true;
+    }
+
+    /// Apply a hyperlink escape code onto the attribute state.
+    fn apply_hyperlink(&mut self, hyperlink: &Option<Arc<Hyperlink>>) {
+        self.attrs.set_hyperlink(hyperlink.clone());
+        self.changed = true;
     }
 
     /// Switch to the given style.  The correct escape color sequences will be emitted.
@@ -125,7 +136,7 @@ impl AttributeState {
 }
 
 /// A span of text within a line.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Span {
     /// Ordinary text.
     Text(String),
@@ -137,8 +148,10 @@ enum Span {
     Invalid(u8),
     /// An unprintable unicode grapheme cluster.
     Unprintable(String),
-    /// An SGR escape sequence.
-    SgrSequence(SmallVec<[u8; 20]>),
+    /// A sequence of SGR escape codes.
+    SgrSequence(SmallVec<[Sgr; 5]>),
+    /// A hyperlink escape code.
+    Hyperlink(Option<Arc<Hyperlink>>),
     /// Data that should be ignored.
     Ignore(SmallVec<[u8; 20]>),
     /// A tab control character.
@@ -273,7 +286,8 @@ impl Span {
                     )?;
                 }
             }
-            Span::SgrSequence(ref s) => attr_state.apply(s),
+            Span::SgrSequence(ref s) => attr_state.apply_sgr_sequence(s),
+            Span::Hyperlink(ref l) => attr_state.apply_hyperlink(l),
             _ => {}
         }
         Ok(position)
@@ -292,12 +306,6 @@ impl Span {
     }
 }
 
-/// Characters that are valid in ANSI escape code paramater sequences.
-const ANSI_PARAM_CHARS: &[u8] = b"0123456789:;[?!\"'#%()*+ ";
-
-/// The maximum length of an ANSI escape code parameter sequence.
-const ANSI_PARAM_MAX_LEN: usize = 64;
-
 /// Parse data into an array of Spans.
 fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
     let mut spans = Vec::new();
@@ -305,47 +313,56 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
 
     fn parse_unicode_span(data: &str, spans: &mut Vec<Span>, match_index: Option<usize>) {
         let mut text_start = None;
-        let mut esc_end = None;
+        let mut skip_to = None;
         for (index, grapheme) in data.grapheme_indices(true) {
             let mut span = None;
 
             // Skip past any escape sequence we've already extracted
-            if let Some(end) = esc_end {
-                if index <= end {
+            if let Some(end) = skip_to {
+                if index < end {
                     continue;
                 } else {
-                    esc_end = None;
+                    skip_to = None;
                 }
             }
 
             if grapheme == "\x1B" {
                 // Look ahead for an escape sequence
+                let mut parser = Parser::new();
                 let bytes = data.as_bytes();
-                if bytes.get(index + 1) == Some(&b'[') {
-                    for i in index + 2..index + ANSI_PARAM_MAX_LEN {
-                        match bytes.get(i) {
-                            Some(pch) if ANSI_PARAM_CHARS.contains(pch) => continue,
-                            Some(b'm') => {
-                                span = Some(Span::SgrSequence(SmallVec::from_slice(
-                                    &bytes[index..=i],
-                                )));
-                                esc_end = Some(i);
-                                break;
+                match parser.parse_first(&bytes[index..]) {
+                    Some((Action::CSI(CSI::Sgr(_)), len)) => {
+                        // Collect all Sgr values
+                        let mut sgr_sequence = SmallVec::new();
+                        let mut parser = Parser::new();
+                        parser.parse(&bytes[index..index + len], |action| {
+                            if let Action::CSI(CSI::Sgr(sgr)) = action {
+                                sgr_sequence.push(sgr);
                             }
-                            Some(b'K') => {
-                                span = Some(Span::Ignore(SmallVec::from_slice(&bytes[index..=i])));
-                                esc_end = Some(i);
-                                break;
-                            }
-                            _ => break,
+                        });
+                        span = Some(Span::SgrSequence(sgr_sequence));
+                        skip_to = Some(index + len);
+                    }
+                    Some((Action::CSI(CSI::Cursor(_)), len))
+                    | Some((Action::CSI(CSI::Edit(_)), len)) => {
+                        span = Some(Span::Ignore(SmallVec::from_slice(
+                            &bytes[index..index + len],
+                        )));
+                        skip_to = Some(index + len);
+                    }
+                    Some((Action::OperatingSystemCommand(osc), len)) => {
+                        if let OperatingSystemCommand::SetHyperlink(hyperlink) = *osc {
+                            span = Some(Span::Hyperlink(hyperlink.map(Arc::new)));
+                            skip_to = Some(index + len);
                         }
                     }
+                    _ => {}
                 }
             }
 
             if grapheme == "\r\n" {
                 span = Some(Span::CRLF);
-                esc_end = Some(index + 1);
+                skip_to = Some(index + 2);
             }
 
             if grapheme == "\n" {
