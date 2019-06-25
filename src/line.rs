@@ -330,33 +330,42 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
                 // Look ahead for an escape sequence
                 let mut parser = Parser::new();
                 let bytes = data.as_bytes();
-                match parser.parse_first(&bytes[index..]) {
-                    Some((Action::CSI(CSI::Sgr(_)), len)) => {
-                        // Collect all Sgr values
-                        let mut sgr_sequence = SmallVec::new();
-                        let mut parser = Parser::new();
-                        parser.parse(&bytes[index..index + len], |action| {
-                            if let Action::CSI(CSI::Sgr(sgr)) = action {
-                                sgr_sequence.push(sgr);
+                if let Some((actions, len)) = parser.parse_first_as_vec(&bytes[index..]) {
+                    // Look at the sequence of actions this parsed to.  We
+                    // assume this is one of:
+                    //   - A sequence of SGR actions parse from a single SGR
+                    //     sequence.
+                    //   - A single Cursor or Edit action we want to ignore.
+                    //   - A single OSC that contains a hyperlink.
+                    //   - Something else that we don't want to parse.
+                    let mut actions = actions.into_iter();
+                    match actions.next() {
+                        Some(Action::CSI(CSI::Sgr(sgr))) => {
+                            // Collect all Sgr values
+                            let mut sgr_sequence = SmallVec::new();
+                            sgr_sequence.push(sgr);
+                            for action in actions {
+                                if let Action::CSI(CSI::Sgr(sgr)) = action {
+                                    sgr_sequence.push(sgr);
+                                }
                             }
-                        });
-                        span = Some(Span::SgrSequence(sgr_sequence));
-                        skip_to = Some(index + len);
-                    }
-                    Some((Action::CSI(CSI::Cursor(_)), len))
-                    | Some((Action::CSI(CSI::Edit(_)), len)) => {
-                        span = Some(Span::Ignore(SmallVec::from_slice(
-                            &bytes[index..index + len],
-                        )));
-                        skip_to = Some(index + len);
-                    }
-                    Some((Action::OperatingSystemCommand(osc), len)) => {
-                        if let OperatingSystemCommand::SetHyperlink(hyperlink) = *osc {
-                            span = Some(Span::Hyperlink(hyperlink.map(Arc::new)));
+                            span = Some(Span::SgrSequence(sgr_sequence));
                             skip_to = Some(index + len);
                         }
+                        Some(Action::CSI(CSI::Cursor(_))) | Some(Action::CSI(CSI::Edit(_))) => {
+                            span = Some(Span::Ignore(SmallVec::from_slice(
+                                &bytes[index..index + len],
+                            )));
+                            skip_to = Some(index + len);
+                        }
+                        Some(Action::OperatingSystemCommand(osc)) => {
+                            if let OperatingSystemCommand::SetHyperlink(hyperlink) = *osc {
+                                span = Some(Span::Hyperlink(hyperlink.map(Arc::new)));
+                                skip_to = Some(index + len);
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
 
