@@ -113,17 +113,23 @@ impl AttributeState {
 
     /// Switch to the given style.  The correct escape color sequences will be emitted.
     fn style(&mut self, style: OutputStyle) -> Result<Option<Change>, std::io::Error> {
-        if self.style != style || (style == OutputStyle::File && self.changed) {
+        if self.style != style || self.changed {
             let attrs = match style {
                 OutputStyle::File => self.attrs.clone(),
                 OutputStyle::Control => CellAttributes::default().set_reverse(true).clone(),
-                OutputStyle::Match => CellAttributes::default()
+                OutputStyle::Match => self
+                    .attrs
+                    .clone()
                     .set_foreground(AnsiColor::Black)
                     .set_background(AnsiColor::Olive)
+                    .set_intensity(Intensity::Normal)
                     .clone(),
-                OutputStyle::CurrentMatch => CellAttributes::default()
+                OutputStyle::CurrentMatch => self
+                    .attrs
+                    .clone()
                     .set_foreground(AnsiColor::Black)
                     .set_background(AnsiColor::Teal)
+                    .set_intensity(Intensity::Normal)
                     .clone(),
             };
             self.style = style;
