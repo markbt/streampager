@@ -1,4 +1,5 @@
-//! Command Line Definitions.
+//! Command line definition for sp.
+
 use clap::{App, Arg};
 
 pub(crate) fn app() -> App<'static, 'static> {
@@ -24,8 +25,7 @@ pub(crate) fn app() -> App<'static, 'static> {
                 .help("Start paging immediately, don't wait to see if input is short"),
         );
     if cfg!(unix) {
-        app.
-        arg(
+        app.arg(
             Arg::with_name("fd")
                 .long("fd")
                 .value_name("FD[=TITLE]")

@@ -6,7 +6,7 @@ use std::process;
 
 use clap::Shell;
 
-#[path = "src/app.rs"]
+#[path = "src/bin/sp/app.rs"]
 mod app;
 
 fn main() {
