@@ -86,7 +86,7 @@ impl FileData {
         mut input: impl Read + Send + 'static,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<(FileData), Error> {
+    ) -> Result<FileData, Error> {
         let buffers = Arc::new(RwLock::new(Vec::new()));
         thread::spawn({
             let buffers = buffers.clone();
@@ -262,15 +262,6 @@ impl File {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
         let data = FileData::new_streamed(stream, meta.clone(), event_sender)?;
         Ok(File { data, meta })
-    }
-
-    /// Load stdin.
-    pub(crate) fn new_stdin(
-        index: usize,
-        title: &str,
-        event_sender: EventSender,
-    ) -> Result<File, Error> {
-        Self::new_streamed(index, std::io::stdin(), title, event_sender)
     }
 
     /// Load an input fd

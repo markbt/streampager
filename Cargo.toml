@@ -15,7 +15,11 @@ build = "build.rs"
 
 [[bin]]
 name = "sp"
-path = "src/main.rs"
+path = "src/bin/sp.rs"
+
+[[bin]]
+name = "spp"
+path = "src/bin/spp.rs"
 
 [dependencies]
 anyhow = "1.0.20"

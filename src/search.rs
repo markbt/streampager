@@ -1,6 +1,6 @@
 //! Searching.
-use bit_set::BitSet;
 use anyhow::Error;
+use bit_set::BitSet;
 use lazy_static::lazy_static;
 use regex::bytes::{NoExpand, Regex};
 use std::borrow::Cow;

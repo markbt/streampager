@@ -5,6 +5,7 @@
 
 pub use anyhow::Result;
 use anyhow::{anyhow, bail};
+use std::ffi::OsStr;
 use std::io::Read;
 use std::time;
 use termwiz::caps::{Capabilities, ProbeHintsBuilder};
@@ -122,6 +123,35 @@ impl Pager {
             self.error_files.insert(out_file.index(), file.clone());
         }
         self.files.push(file);
+        Ok(self)
+    }
+
+    /// Attach a file from disk.
+    pub fn add_output_file(&mut self, filename: &OsStr) -> Result<&mut Self> {
+        let index = self.files.len();
+        let event_sender = self.events.sender();
+        let file = File::new_mapped(index, filename, event_sender)?;
+        self.files.push(file);
+        Ok(self)
+    }
+
+    /// Attach the output and error streams from a subprocess.
+    pub fn add_subprocess<I, S>(
+        &mut self,
+        command: &OsStr,
+        args: I,
+        title: &str,
+    ) -> Result<&mut Self>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let index = self.files.len();
+        let event_sender = self.events.sender();
+        let (out_file, err_file) = File::new_command(index, command, args, title, event_sender)?;
+        self.error_files.insert(index, err_file.clone());
+        self.files.push(out_file);
+        self.files.push(err_file);
         Ok(self)
     }
 
