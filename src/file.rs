@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use std::cmp::min;
 use std::ffi::OsStr;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
@@ -264,19 +263,6 @@ impl File {
         Ok(File { data, meta })
     }
 
-    /// Load an input fd
-    pub(crate) fn new_fd(
-        index: usize,
-        fd: RawFd,
-        title: &str,
-        event_sender: EventSender,
-    ) -> Result<File, Error> {
-        let meta = Arc::new(FileMeta::new(index, title.to_string()));
-        let file = unsafe { std::fs::File::from_raw_fd(fd) };
-        let data = FileData::new_streamed(file, meta.clone(), event_sender)?;
-        Ok(File { data, meta })
-    }
-
     /// Load a file by memory mapping it if possible.
     pub(crate) fn new_mapped(
         index: usize,
@@ -316,10 +302,10 @@ impl File {
             .stderr(Stdio::piped())
             .spawn()
             .context(command.to_string_lossy().into_owned())?;
-        let out_fd = process.stdout.take().unwrap().into_raw_fd();
-        let err_fd = process.stderr.take().unwrap().into_raw_fd();
-        let out_file = File::new_fd(index, out_fd, &title, event_sender.clone())?;
-        let err_file = File::new_fd(index + 1, err_fd, &title_err, event_sender.clone())?;
+        let out = process.stdout.take().unwrap();
+        let err = process.stderr.take().unwrap();
+        let out_file = File::new_streamed(index, out, &title, event_sender.clone())?;
+        let err_file = File::new_streamed(index + 1, err, &title_err, event_sender.clone())?;
         thread::spawn({
             let out_file = out_file.clone();
             move || {
