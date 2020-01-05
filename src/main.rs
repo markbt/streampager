@@ -119,6 +119,9 @@ fn open_terminal() -> Result<(SystemTerminal, Capabilities), Error> {
             .build()
             .map_err(|s| anyhow!(s))?,
     )?;
+    if cfg!(unix) && caps.terminfo_db().is_none() {
+        bail!("terminfo database not found (is $TERM correct?)");
+    }
     let mut term = SystemTerminal::new(caps.clone())?;
     term.set_raw_mode()?;
     Ok((term, caps))
