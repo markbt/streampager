@@ -45,7 +45,7 @@ impl Capabilities {
 /// An action that affects the display.
 pub(crate) enum Action {
     /// Run a function.  The function may return a new action to run next.
-    Run(Box<FnMut(&mut Screen) -> Result<Option<Action>, Error>>),
+    Run(Box<dyn FnMut(&mut Screen) -> Result<Option<Action>, Error>>),
 
     /// Change the terminal.
     Change(Change),

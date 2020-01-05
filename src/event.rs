@@ -97,7 +97,7 @@ impl EventStream {
     /// Get an event, either from the event stream or from the terminal.
     pub(crate) fn get(
         &self,
-        term: &mut Terminal,
+        term: &mut dyn Terminal,
         wait: Option<Duration>,
     ) -> Result<Option<Event>, Error> {
         // First, try to get an event from the queue.
