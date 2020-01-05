@@ -3,8 +3,8 @@
 //! A pager for command output or large files.
 #![warn(missing_docs)]
 
+use anyhow::{anyhow, bail, Error};
 use clap::ArgMatches;
-use failure::{bail, Error};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
@@ -51,7 +51,7 @@ fn main() {
         Ok(()) => 0,
         Err(err) => {
             let mut message = String::new();
-            for cause in err.iter_chain() {
+            for cause in err.chain() {
                 write!(message, ": {}", cause).expect("format write should not fail");
             }
             eprintln!("{}{}", prog_name, message);
@@ -117,7 +117,7 @@ fn open_terminal() -> Result<(SystemTerminal, Capabilities), Error> {
         ProbeHintsBuilder::new_from_env()
             .mouse_reporting(Some(false))
             .build()
-            .map_err(failure::err_msg)?,
+            .map_err(|s| anyhow!(s))?,
     )?;
     let mut term = SystemTerminal::new(caps.clone())?;
     term.set_raw_mode()?;

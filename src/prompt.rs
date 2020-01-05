@@ -1,5 +1,5 @@
 //! Prompts for input.
-use failure::Error;
+use anyhow::Error;
 use termwiz::cell::CellAttributes;
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;

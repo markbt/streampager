@@ -1,5 +1,5 @@
 //! Manage the Display.
-use failure::Error;
+use anyhow::Error;
 use scopeguard::guard;
 use std::time::Duration;
 use termwiz::caps::Capabilities as TermCapabilities;

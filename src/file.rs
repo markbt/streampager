@@ -1,5 +1,5 @@
 //! Files.
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 use memmap::Mmap;
 use std::borrow::Cow;
 use std::cmp::min;

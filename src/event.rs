@@ -1,5 +1,5 @@
 //! Events.
-use failure::Error;
+use anyhow::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;

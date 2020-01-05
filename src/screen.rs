@@ -1,5 +1,5 @@
 //! A screen displaying a single file.
-use failure::Error;
+use anyhow::Error;
 use std::cmp::{max, min};
 use std::time::Instant;
 use termwiz::cell::{CellAttributes, Intensity};
