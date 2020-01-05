@@ -1,5 +1,5 @@
 //! Prompts for input.
-use failure::Error;
+use anyhow::Error;
 use termwiz::cell::CellAttributes;
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
@@ -10,7 +10,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::display::Action;
 use crate::screen::Screen;
 
-type PromptRunFn = FnMut(&mut Screen, &str) -> Result<Option<Action>, Error>;
+type PromptRunFn = dyn FnMut(&mut Screen, &str) -> Result<Option<Action>, Error>;
 
 /// A prompt for input from the user.
 pub(crate) struct Prompt {

@@ -1,7 +1,7 @@
 //! Commands
 //!
 //! Commands the user can invoke.
-use failure::Error;
+use anyhow::Error;
 
 use crate::display::Action;
 use crate::event::EventSender;

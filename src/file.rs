@@ -1,5 +1,5 @@
 //! Files.
-use failure::{Error, ResultExt};
+use anyhow::{Context, Error};
 use memmap::Mmap;
 use std::borrow::Cow;
 use std::cmp::min;
@@ -252,15 +252,25 @@ pub(crate) struct File {
 }
 
 impl File {
+    /// Load stream.
+    pub(crate) fn new_streamed(
+        index: usize,
+        stream: impl Read + Send + 'static,
+        title: &str,
+        event_sender: EventSender,
+    ) -> Result<File, Error> {
+        let meta = Arc::new(FileMeta::new(index, title.to_string()));
+        let data = FileData::new_streamed(stream, meta.clone(), event_sender)?;
+        Ok(File { data, meta })
+    }
+
     /// Load stdin.
     pub(crate) fn new_stdin(
         index: usize,
         title: &str,
         event_sender: EventSender,
     ) -> Result<File, Error> {
-        let meta = Arc::new(FileMeta::new(index, title.to_string()));
-        let data = FileData::new_streamed(std::io::stdin(), meta.clone(), event_sender)?;
-        Ok(File { data, meta })
+        Self::new_streamed(index, std::io::stdin(), title, event_sender)
     }
 
     /// Load an input fd

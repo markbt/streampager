@@ -7,8 +7,7 @@
 //! Progress indicator pages are blocks of text terminated by an ASCII form-feed
 //! character.  The progress indicator will display the most recently received
 //! page.
-use std::io::{BufRead, BufReader};
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::io::{BufRead, BufReader, Read};
 use std::sync::{Arc, RwLock};
 use std::thread;
 
@@ -41,13 +40,13 @@ impl Progress {
     /// Create a new progress indicator that receives progress pages on the
     /// given file descriptor.  Progress events are sent on the event_sender
     /// whenever a new page is received.
-    pub(crate) fn new(fd: RawFd, event_sender: EventSender) -> Progress {
+    pub(crate) fn new(reader: impl Read + Send + 'static, event_sender: EventSender) -> Progress {
         let inner = Arc::new(RwLock::new(ProgressInner {
             buffer: Vec::new(),
             newlines: Vec::new(),
             finished: false,
         }));
-        let mut input = BufReader::new(unsafe { std::fs::File::from_raw_fd(fd) });
+        let mut input = BufReader::new(reader);
         thread::spawn({
             let inner = inner.clone();
             let progress_unique = UniqueInstance::new();

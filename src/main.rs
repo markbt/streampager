@@ -3,12 +3,12 @@
 //! A pager for command output or large files.
 #![warn(missing_docs)]
 
+use anyhow::{anyhow, bail, Error};
 use clap::ArgMatches;
-use failure::{bail, Error};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::Path;
 use std::str::FromStr;
 use std::time;
@@ -51,7 +51,7 @@ fn main() {
         Ok(()) => 0,
         Err(err) => {
             let mut message = String::new();
-            for cause in err.iter_chain() {
+            for cause in err.chain() {
                 write!(message, ": {}", cause).expect("format write should not fail");
             }
             eprintln!("{}{}", prog_name, message);
@@ -117,8 +117,11 @@ fn open_terminal() -> Result<(SystemTerminal, Capabilities), Error> {
         ProbeHintsBuilder::new_from_env()
             .mouse_reporting(Some(false))
             .build()
-            .map_err(failure::err_msg)?,
+            .map_err(|s| anyhow!(s))?,
     )?;
+    if cfg!(unix) && caps.terminfo_db().is_none() {
+        bail!("terminfo database not found (is $TERM correct?)");
+    }
     let mut term = SystemTerminal::new(caps.clone())?;
     term.set_raw_mode()?;
     Ok((term, caps))
@@ -233,7 +236,8 @@ fn open_files(args: ArgMatches) -> Result<Spec, Error> {
         .or_else(|| args.value_of("progress_fd"))
     {
         if let Ok(fd) = fd_spec.parse::<RawFd>() {
-            progress = Some(Progress::new(fd, events.sender()));
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
+            progress = Some(Progress::new(file, events.sender()));
         }
     }
 
