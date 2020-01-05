@@ -2,7 +2,7 @@
 use clap::{App, Arg};
 
 pub(crate) fn app() -> App<'static, 'static> {
-    App::new("sp")
+    let app = App::new("sp")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Stream Pager")
         .arg(
@@ -11,6 +11,21 @@ pub(crate) fn app() -> App<'static, 'static> {
                 .multiple(true),
         )
         .arg(
+            Arg::with_name("command")
+                .long("command")
+                .short("c")
+                .value_name("\"COMMAND ARGS...\"")
+                .help("Runs the command in a subshell and displays its output and error streams")
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("force")
+                .long("force")
+                .help("Start paging immediately, don't wait to see if input is short"),
+        );
+    if cfg!(unix) {
+        app.
+        arg(
             Arg::with_name("fd")
                 .long("fd")
                 .value_name("FD[=TITLE]")
@@ -25,21 +40,12 @@ pub(crate) fn app() -> App<'static, 'static> {
                 .multiple(true),
         )
         .arg(
-            Arg::with_name("command")
-                .long("command").short("c")
-                .value_name("\"COMMAND ARGS...\"")
-                .help("Runs the command in a subshell and displays its output and error streams")
-                .multiple(true),
-        )
-        .arg(
             Arg::with_name("progress_fd")
                 .long("progress-fd")
                 .value_name("FD")
                 .help("Displays pages from this file descriptor as progress indicators"),
         )
-        .arg(
-            Arg::with_name("force")
-                .long("force")
-                .help("Start paging immediately, don't wait to see if input is short"),
-        )
+    } else {
+        app
+    }
 }

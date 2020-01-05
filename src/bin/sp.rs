@@ -8,7 +8,9 @@ use clap::{App, Arg, ArgMatches};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
+#[cfg(unix)]
 use std::os::unix::io::{FromRawFd, RawFd};
+#[cfg(unix)]
 use std::str::FromStr;
 use termwiz::istty::IsTty;
 use vec_map::VecMap;
@@ -34,7 +36,7 @@ fn main() {
 }
 
 fn app() -> App<'static, 'static> {
-    App::new("sp")
+    let app = App::new("sp")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Stream Pager")
         .arg(
@@ -43,6 +45,20 @@ fn app() -> App<'static, 'static> {
                 .multiple(true),
         )
         .arg(
+            Arg::with_name("command")
+                .long("command")
+                .short("c")
+                .value_name("\"COMMAND ARGS...\"")
+                .help("Runs the command in a subshell and displays its output and error streams")
+                .multiple(true),
+        )
+        .arg(
+            Arg::with_name("force")
+                .long("force")
+                .help("Start paging immediately, don't wait to see if input is short"),
+        );
+    if cfg!(unix) {
+        app.arg(
             Arg::with_name("fd")
                 .long("fd")
                 .value_name("FD[=TITLE]")
@@ -57,30 +73,23 @@ fn app() -> App<'static, 'static> {
                 .multiple(true),
         )
         .arg(
-            Arg::with_name("command")
-                .long("command").short("c")
-                .value_name("\"COMMAND ARGS...\"")
-                .help("Runs the command in a subshell and displays its output and error streams")
-                .multiple(true),
-        )
-        .arg(
             Arg::with_name("progress_fd")
                 .long("progress-fd")
                 .value_name("FD")
                 .help("Displays pages from this file descriptor as progress indicators"),
         )
-        .arg(
-            Arg::with_name("force")
-                .long("force")
-                .help("Start paging immediately, don't wait to see if input is short"),
-        )
+    } else {
+        app
+    }
 }
 
 /// A specification of a file to display.
 enum FileSpec {
     Stdin,
     Named(OsString),
+    #[cfg(unix)]
     Fd(RawFd, String),
+    #[cfg(unix)]
     ErrorFd(RawFd, String),
     Command(OsString),
 }
@@ -97,24 +106,27 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
         }
     }
 
-    // Collect file specifications from --fd arguments.
-    if let (Some(fds), Some(indices)) = (args.values_of_lossy("fd"), args.indices_of("fd")) {
-        for (fd_spec, index) in fds.iter().zip(indices) {
-            let (fd, title) = parse_fd_title(&fd_spec)?;
-            let title = title.unwrap_or(&fd_spec);
-            specs.insert(index, FileSpec::Fd(fd, title.to_string()));
+    #[cfg(unix)]
+    {
+        // Collect file specifications from --fd arguments.
+        if let (Some(fds), Some(indices)) = (args.values_of_lossy("fd"), args.indices_of("fd")) {
+            for (fd_spec, index) in fds.iter().zip(indices) {
+                let (fd, title) = parse_fd_title(&fd_spec)?;
+                let title = title.unwrap_or(&fd_spec);
+                specs.insert(index, FileSpec::Fd(fd, title.to_string()));
+            }
         }
-    }
 
-    // Collect file specifications from --error-fd arguments.
-    if let (Some(fds), Some(indices)) = (
-        args.values_of_lossy("error_fd"),
-        args.indices_of("error_fd"),
-    ) {
-        for (fd_spec, index) in fds.iter().zip(indices) {
-            let (fd, title) = parse_fd_title(&fd_spec)?;
-            let title = title.unwrap_or(&fd_spec);
-            specs.insert(index, FileSpec::ErrorFd(fd, title.to_string()));
+        // Collect file specifications from --error-fd arguments.
+        if let (Some(fds), Some(indices)) = (
+            args.values_of_lossy("error_fd"),
+            args.indices_of("error_fd"),
+        ) {
+            for (fd_spec, index) in fds.iter().zip(indices) {
+                let (fd, title) = parse_fd_title(&fd_spec)?;
+                let title = title.unwrap_or(&fd_spec);
+                specs.insert(index, FileSpec::ErrorFd(fd, title.to_string()));
+            }
         }
     }
 
@@ -135,10 +147,13 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
         // Nothing specified on the command line - page standard streams.
         specs.insert(0, FileSpec::Stdin);
 
-        if let Ok(fd_spec) = env::var("PAGER_ERROR_FD") {
-            if let Ok((fd, title)) = parse_fd_title(&fd_spec) {
-                let title = title.unwrap_or("STDERR");
-                specs.insert(1, FileSpec::ErrorFd(fd, title.to_string()));
+        #[cfg(unix)]
+        {
+            if let Ok(fd_spec) = env::var("PAGER_ERROR_FD") {
+                if let Ok((fd, title)) = parse_fd_title(&fd_spec) {
+                    let title = title.unwrap_or("STDERR");
+                    specs.insert(1, FileSpec::ErrorFd(fd, title.to_string()));
+                }
             }
         }
 
@@ -147,15 +162,18 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
         }
     }
 
-    if let Some(fd_spec) = env::var("PAGER_PROGRESS_FD")
-        .ok()
-        .as_ref()
-        .map(String::as_ref)
-        .or_else(|| args.value_of("progress_fd"))
+    #[cfg(unix)]
     {
-        if let Ok(fd) = fd_spec.parse::<RawFd>() {
-            let file = unsafe { std::fs::File::from_raw_fd(fd) };
-            pager.set_progress_stream(file);
+        if let Some(fd_spec) = env::var("PAGER_PROGRESS_FD")
+            .ok()
+            .as_ref()
+            .map(String::as_ref)
+            .or_else(|| args.value_of("progress_fd"))
+        {
+            if let Ok(fd) = fd_spec.parse::<RawFd>() {
+                let file = unsafe { std::fs::File::from_raw_fd(fd) };
+                pager.set_progress_stream(file);
+            }
         }
     }
 
@@ -169,10 +187,12 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
             FileSpec::Named(filename) => {
                 pager.add_output_file(filename)?;
             }
+            #[cfg(unix)]
             FileSpec::Fd(fd, title) => {
                 let stream = unsafe { std::fs::File::from_raw_fd(*fd) };
                 pager.add_output_stream(stream, title)?;
             }
+            #[cfg(unix)]
             FileSpec::ErrorFd(fd, title) => {
                 let stream = unsafe { std::fs::File::from_raw_fd(*fd) };
                 pager.add_error_stream(stream, title)?;
@@ -189,6 +209,7 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
     pager.run()
 }
 
+#[cfg(unix)]
 /// Parse a file description and title specification.
 ///
 /// Parses `FD[=TITLE]` and returns the FD and the optional title.
