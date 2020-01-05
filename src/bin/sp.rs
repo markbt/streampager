@@ -198,9 +198,14 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
                 pager.add_error_stream(stream, title)?;
             }
             FileSpec::Command(command) => {
+                let (shell, flag) = if cfg!(windows) {
+                    ("cmd.exe", "/C")
+                } else {
+                    ("/bin/sh", "-c")
+                };
                 pager.add_subprocess(
-                    OsStr::new("/bin/sh"),
-                    &[OsStr::new("-c"), command],
+                    OsStr::new(shell),
+                    &[OsStr::new(flag), command],
                     &command.to_string_lossy(),
                 )?;
             }
