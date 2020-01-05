@@ -35,3 +35,6 @@ vec_map = "0.8.1"
 
 [build-dependencies]
 clap = "2.32.0"
+
+[dev-dependencies]
+pipe = "0.2.0"
