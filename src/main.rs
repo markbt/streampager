@@ -8,7 +8,7 @@ use clap::ArgMatches;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::path::Path;
 use std::str::FromStr;
 use std::time;
@@ -236,7 +236,8 @@ fn open_files(args: ArgMatches) -> Result<Spec, Error> {
         .or_else(|| args.value_of("progress_fd"))
     {
         if let Ok(fd) = fd_spec.parse::<RawFd>() {
-            progress = Some(Progress::new(fd, events.sender()));
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
+            progress = Some(Progress::new(file, events.sender()));
         }
     }
 
