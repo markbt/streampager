@@ -44,7 +44,9 @@ fn main() -> Result<()> {
     pager
         .add_output_stream(out_read, "output stream")?
         .add_error_stream(err_read, "error stream")?
-        .set_progress_stream(prog_read);
+        .set_progress_stream(prog_read)
+        .set_interface_mode(std::env::var("MODE").unwrap_or_default().as_ref());
+
     pager.run()?;
 
     println!("pager has exited");

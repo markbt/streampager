@@ -12,10 +12,11 @@ use std::fmt::Write;
 use std::os::unix::io::{FromRawFd, RawFd};
 #[cfg(unix)]
 use std::str::FromStr;
+use std::time::Duration;
 use termwiz::istty::IsTty;
 use vec_map::VecMap;
 
-use streampager::Pager;
+use streampager::{config::InterfaceMode, Pager};
 
 mod app;
 
@@ -52,6 +53,7 @@ enum FileSpec {
 fn open_files(args: ArgMatches) -> Result<(), Error> {
     let mut pager = Pager::new_using_system_terminal()?;
     let mut specs = VecMap::new();
+    pager.set_interface_mode(InterfaceMode::Delayed(Duration::from_secs(2)));
 
     // Collect file specifications from arguments.
     if let (Some(filenames), Some(indices)) = (args.values_of_os("FILE"), args.indices_of("FILE")) {
@@ -111,9 +113,9 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
             }
         }
 
-        if !args.is_present("force") {
-            pager.set_delay_fullscreen(true);
-        }
+        if args.is_present("force") {
+            pager.set_interface_mode(InterfaceMode::FullScreen);
+        };
     }
 
     #[cfg(unix)]
