@@ -709,6 +709,16 @@ impl Screen {
         }
     }
 
+    /// Scroll down (screen / n) lines. Negative `n` means scrolling up.
+    fn scroll_down_screen(&mut self, n: isize) {
+        let lines = (self.rendered_position.height - self.rendered_overlay_height) as isize / n;
+        if n >= 0 {
+            self.scroll_down((lines as usize).max(1));
+        } else {
+            self.scroll_up((lines.abs() as usize).max(1));
+        }
+    }
+
     /// Dispatch a keypress to navigate the displayed file.
     pub(crate) fn dispatch_key(
         &mut self,
@@ -730,38 +740,39 @@ impl Screen {
                 self.refresh();
                 return Ok(Some(Action::ClearOverlay));
             }
-            (NONE, UpArrow) => self.scroll_up(1),
-            (NONE, DownArrow) => self.scroll_down(1),
-            (SHIFT, UpArrow) | (NONE, ApplicationUpArrow) => {
-                self.scroll_up(self.position.height / 4)
-            }
-            (SHIFT, DownArrow) | (NONE, ApplicationDownArrow) => {
-                self.scroll_down(self.position.height / 4)
-            }
-            (NONE, PageDown) | (NONE, Char(' ')) => {
-                self.scroll_down(max(
-                    self.rendered_position.height - self.rendered_overlay_height,
-                    1,
-                ));
-            }
-            (NONE, PageUp) | (NONE, Backspace) | (NONE, Char('b')) => {
-                self.scroll_up(max(
-                    self.rendered_position.height - self.rendered_overlay_height,
-                    1,
-                ));
-            }
-            (NONE, End) => self.following_end = true,
-            (NONE, Home) => self.scroll_up(self.position.top),
+
+            // line
+            (NONE, UpArrow) | (NONE, Char('k')) => self.scroll_up(1),
+            (NONE, DownArrow) | (NONE, Enter) | (NONE, Char('j')) => self.scroll_down(1),
+
+            // 1/4 screen
+            (SHIFT, UpArrow) | (NONE, ApplicationUpArrow) => self.scroll_down_screen(-4),
+            (SHIFT, DownArrow) | (NONE, ApplicationDownArrow) => self.scroll_down_screen(4),
+
+            // 1/2 screen
+            (CTRL, Char('D')) => self.scroll_down_screen(2),
+            (CTRL, Char('U')) => self.scroll_down_screen(-2),
+
+            // 1 screen
+            (NONE, PageDown) | (NONE, Char(' ')) | (CTRL, Char('F')) => self.scroll_down_screen(1),
+            (NONE, PageUp) | (NONE, Backspace) | (CTRL, Char('B')) => self.scroll_down_screen(-1),
+
+            (NONE, End) | (NONE, Char('G')) => self.following_end = true,
+            (NONE, Home) | (NONE, Char('g')) => self.scroll_up(self.position.top),
+
             (NONE, LeftArrow) => self.scroll_left(4),
             (NONE, RightArrow) => self.scroll_right(4),
+
             (SHIFT, LeftArrow) | (NONE, ApplicationLeftArrow) => {
                 self.scroll_left(self.position.width / 4)
             }
             (SHIFT, RightArrow) | (NONE, ApplicationRightArrow) => {
                 self.scroll_right(self.position.width / 4)
             }
+
             (NONE, Char('[')) => return Ok(Some(Action::PreviousFile)),
             (NONE, Char(']')) => return Ok(Some(Action::NextFile)),
+
             (NONE, Char('?')) | (NONE, Char('h')) => return Ok(Some(Action::ShowHelp)),
             (NONE, Char('#')) => {
                 self.line_numbers = !self.line_numbers;
@@ -787,7 +798,7 @@ impl Screen {
             }
             (NONE, Char(',')) => self.move_match(MatchMotion::Previous),
             (NONE, Char('.')) => self.move_match(MatchMotion::Next),
-            (NONE, Char('p')) => self.move_match(MatchMotion::PreviousLine),
+            (NONE, Char('p')) | (NONE, Char('N')) => self.move_match(MatchMotion::PreviousLine),
             (NONE, Char('n')) => self.move_match(MatchMotion::NextLine),
             (NONE, Char('(')) => self.move_match(MatchMotion::First),
             (NONE, Char(')')) => self.move_match(MatchMotion::Last),
