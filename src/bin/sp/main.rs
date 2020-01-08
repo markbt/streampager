@@ -52,8 +52,23 @@ enum FileSpec {
 /// Run the pager, opening files or file descriptors (including stdin).
 fn open_files(args: ArgMatches) -> Result<(), Error> {
     let mut pager = Pager::new_using_system_terminal()?;
+    let mode = {
+        let delayed = args
+            .value_of("delayed")
+            .map(|ms| ms.parse::<u64>())
+            .transpose()?;
+        let alternate = !args.is_present("no_alternate");
+        match (alternate, delayed) {
+            (_, Some(0)) => InterfaceMode::FullScreen,
+            (true, None) => InterfaceMode::Delayed(Duration::from_secs(2)),
+            (true, Some(ms)) => InterfaceMode::Delayed(Duration::from_secs(ms)),
+            (false, None) => InterfaceMode::Hybrid,
+            (false, Some(_)) => bail!("--delayed and --no-alternate cannot be use together"),
+        }
+    };
+    pager.set_interface_mode(mode);
+
     let mut specs = VecMap::new();
-    pager.set_interface_mode(InterfaceMode::Delayed(Duration::from_secs(2)));
 
     // Collect file specifications from arguments.
     if let (Some(filenames), Some(indices)) = (args.values_of_os("FILE"), args.indices_of("FILE")) {
@@ -112,10 +127,6 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
                 }
             }
         }
-
-        if args.is_present("force") {
-            pager.set_interface_mode(InterfaceMode::FullScreen);
-        };
     }
 
     #[cfg(unix)]
