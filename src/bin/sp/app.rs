@@ -20,9 +20,17 @@ pub(crate) fn app() -> App<'static, 'static> {
                 .multiple(true),
         )
         .arg(
-            Arg::with_name("force")
-                .long("force")
-                .help("Start paging immediately, don't wait to see if input is short"),
+            Arg::with_name("delayed")
+                .long("delayed")
+                .short("D")
+                .value_name("SEC")
+                .help("Enter full screen after SEC seconds without waiting for content to fill one screen."),
+        )
+        .arg(
+            Arg::with_name("no_alternate")
+                .long("no-alternate")
+                .short("X")
+                .help("Disables using the alternate screen. Enables streaming output before full screen."),
         );
     if cfg!(unix) {
         app.arg(
