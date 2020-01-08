@@ -1,6 +1,7 @@
 //! A screen displaying a single file.
 use anyhow::Error;
 use std::cmp::{max, min};
+use std::sync::Arc;
 use std::time::Instant;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
@@ -10,6 +11,7 @@ use termwiz::surface::{CursorShape, Position};
 use unicode_width::UnicodeWidthStr;
 
 use crate::command;
+use crate::config::Config;
 use crate::display::Action;
 use crate::display::Capabilities;
 use crate::event::EventSender;
@@ -98,11 +100,14 @@ pub(crate) struct Screen {
 
     /// The time that animations started.
     animation_start: Instant,
+
+    /// Configuration set by the top-level `Pager`.
+    config: Arc<Config>,
 }
 
 impl Screen {
     /// Create a screen that displays a file.
-    pub(crate) fn new(file: File) -> Screen {
+    pub(crate) fn new(file: File, config: Arc<Config>) -> Screen {
         Screen {
             file,
             error_file: None,
@@ -123,6 +128,7 @@ impl Screen {
             search: None,
             pending_refresh: Refresh::None,
             animation_start: Instant::now(),
+            config,
         }
     }
 
@@ -672,17 +678,17 @@ impl Screen {
 
     /// Scroll the screen `step` characters down.
     fn scroll_down(&mut self, step: usize) {
-        let mut step = step;
         self.following_end = false;
-        let lines = self.file.lines();
-        if self.position.top + step < lines {
-            self.position.top += step;
-        } else if lines > 0 {
-            step = lines - self.position.top - 1;
-            self.position.top = lines - 1;
+        let mut lines = self.file.lines();
+        if !self.config.scroll_past_eof {
+            let view_height = self.rendered_position.height - self.rendered_overlay_height;
+            lines = lines.max(view_height) - view_height;
         } else {
-            step = 0;
+            // Keep at least one line on screen.
+            lines = lines.max(1) - 1;
         }
+        let step = step.min(lines.max(self.position.top) - self.position.top);
+        self.position.top += step;
         self.pending_refresh.rotate_range_up(step);
         self.refresh_overlay();
     }

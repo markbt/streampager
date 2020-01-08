@@ -166,6 +166,12 @@ impl Pager {
         self
     }
 
+    /// Set whether scrolling can past end of file.
+    pub fn set_scroll_past_eof(&mut self, value: bool) -> &mut Self {
+        self.config.scroll_past_eof = value;
+        self
+    }
+
     /// Run Stream Pager.
     pub fn run(self) -> Result<()> {
         display::start(

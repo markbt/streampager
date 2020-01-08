@@ -87,6 +87,9 @@ impl From<&str> for InterfaceMode {
 pub struct Config {
     /// Specify when to use fullscreen.
     pub interface_mode: InterfaceMode,
+
+    /// Specify whether scrolling down can past end of file.
+    pub scroll_past_eof: bool,
 }
 
 impl Config {
@@ -98,6 +101,18 @@ impl Config {
                 .ok()
                 .map(|s| InterfaceMode::from(s.as_ref()))
                 .unwrap_or(Default::default()),
+            scroll_past_eof: var("SP_SCROLL_PAST_EOF")
+                .ok()
+                .and_then(|s| parse_bool(&s))
+                .unwrap_or(true),
         }
+    }
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_ref() {
+        "1" | "yes" | "true" | "on" | "always" => Some(true),
+        "0" | "no" | "false" | "off" | "never" => Some(false),
+        _ => None,
     }
 }
