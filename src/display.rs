@@ -11,6 +11,8 @@ use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
 use crate::command;
+use crate::config::Config;
+use crate::direct;
 use crate::event::{Event, EventStream, UniqueInstance};
 use crate::file::File;
 use crate::progress::Progress;
@@ -146,13 +148,37 @@ impl Screens {
 
 /// Start displaying files.
 pub(crate) fn start(
-    term: impl Terminal,
+    mut term: impl Terminal,
     term_caps: TermCapabilities,
-    events: EventStream,
+    mut events: EventStream,
     files: Vec<File>,
     error_files: VecMap<File>,
     progress: Option<Progress>,
+    config: Config,
 ) -> Result<(), Error> {
+    let outcome = {
+        // Only take the first output and error. This emulates the behavior that
+        // the main pager can only display one stream at a time.
+        let output_files = &files[0..1.min(files.len())];
+        let error_files = match error_files.iter().nth(0) {
+            None => Vec::new(),
+            Some((_i, file)) => vec![file.clone()],
+        };
+        direct::direct(
+            &mut term,
+            output_files,
+            &error_files[..],
+            progress.as_ref(),
+            &mut events,
+            config.interface_mode,
+        )?
+    };
+    match outcome {
+        direct::Outcome::RenderComplete | direct::Outcome::Interrupted => return Ok(()),
+        direct::Outcome::RenderIncomplete => (),
+        direct::Outcome::RenderNothing => term.enter_alternate_screen()?,
+    }
+
     let mut term = guard(term, |mut term| {
         // Clean up when exiting.  Most of this should be achieved by exiting
         // the alternate screen, but just in case it isn't, move to the
@@ -178,7 +204,6 @@ pub(crate) fn start(
     let event_sender = events.sender();
     let render_unique = UniqueInstance::new();
     let refresh_unique = UniqueInstance::new();
-    term.enter_alternate_screen()?;
     {
         let screen = screens.current();
         let size = term.get_screen_size()?;

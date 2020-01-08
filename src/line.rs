@@ -292,18 +292,6 @@ impl Span {
         }
         Ok(position)
     }
-
-    /// Return the width of the given span in characters, taking into account
-    /// Unicode widths and the expansion that results in displaying control
-    /// characters in hex.
-    fn width(&self) -> usize {
-        match *self {
-            Span::Text(ref t) => t.width(),
-            Span::Control(_) | Span::Invalid(_) => 4,
-            Span::Unprintable(_) => 8,
-            _ => 0,
-        }
-    }
 }
 
 /// Parse data into an array of Spans.
@@ -511,14 +499,6 @@ impl Line {
         Line { spans }
     }
 
-    pub(crate) fn width(&self) -> usize {
-        self.spans.iter().map(|s| s.width()).sum()
-    }
-
-    pub(crate) fn height(&self, width: usize) -> usize {
-        (self.width() + width - 1) / width
-    }
-
     /// Produce the `Change`s needed to render a slice of the line on a terminal.
     pub(crate) fn render(
         &self,
@@ -571,11 +551,6 @@ impl Line {
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
         Ok(())
-    }
-
-    /// Produce changes to render the full line.
-    pub(crate) fn render_full(&self, changes: &mut Vec<Change>) -> Result<(), std::io::Error> {
-        self.render(changes, 0, !0, None)
     }
 }
 

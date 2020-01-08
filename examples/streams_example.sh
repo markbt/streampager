@@ -33,7 +33,7 @@ generate_progress() {
 }
 
 # Calling processes can provide input file descriptors using environment variables:
-generate_output | PAGER_TITLE=generate_output PAGER_ERROR_FD=55 PAGER_PROGRESS_FD=66 cargo run 55< <(generate_error) 66< <(generate_progress)
+generate_output | PAGER_TITLE=generate_output PAGER_ERROR_FD=55 PAGER_PROGRESS_FD=66 cargo run --bin sp 55< <(generate_error) 66< <(generate_progress)
 
 # Calling processes can provide input file descriptors using arguments:
 # generate_output | cargo run -- 55< <(generate_error) 66< <(generate_progress) --fd 0=generate_output --error-fd 55=ERR --progress-fd 66
