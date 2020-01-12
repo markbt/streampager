@@ -13,8 +13,10 @@ fn main() -> Result<()> {
 
     spawn(move || {
         for i in 1..=100 {
-            let _ = out_write.write_all(format!("this is line {}\n", i).as_bytes());
-            sleep(Duration::from_millis(450));
+            let _ = out_write.write_all(b"this is line");
+            sleep(Duration::from_millis(225));
+            let _ = out_write.write_all(format!(" {}\n", i).as_bytes());
+            sleep(Duration::from_millis(225));
         }
         let _ = out_write.write_all(b"this is the end of output stream\n");
     });

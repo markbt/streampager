@@ -75,8 +75,17 @@ pub(crate) fn direct<T: Terminal>(
         let mut result = Vec::new();
         for file in files.iter() {
             let index = file.index();
-            let lines = file.lines();
+            let mut lines = file.lines();
             let last = last_read.get(index).cloned().unwrap_or(0);
+            // Ignore the incomplete last line if the file is loading.
+            if lines > 0
+                && !file.loaded()
+                && file
+                    .with_line(lines - 1, |l| !l.ends_with(b"\n"))
+                    .unwrap_or(true)
+            {
+                lines -= 1;
+            }
             if lines >= last {
                 let lines = (last + max_lines).min(lines);
                 result.reserve(lines - last);
