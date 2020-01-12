@@ -1,6 +1,7 @@
 //! Manage the Display.
 use anyhow::Error;
 use scopeguard::guard;
+use std::sync::Arc;
 use std::time::Duration;
 use termwiz::caps::Capabilities as TermCapabilities;
 use termwiz::cell::CellAttributes;
@@ -11,6 +12,8 @@ use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
 use crate::command;
+use crate::config::Config;
+use crate::direct;
 use crate::event::{Event, EventStream, UniqueInstance};
 use crate::file::File;
 use crate::progress::Progress;
@@ -97,12 +100,17 @@ struct Screens {
 
 impl Screens {
     /// Create a new screens container for the given files.
-    fn new(files: Vec<File>, mut error_files: VecMap<File>, progress: Option<Progress>) -> Screens {
+    fn new(
+        files: Vec<File>,
+        mut error_files: VecMap<File>,
+        progress: Option<Progress>,
+        config: Arc<Config>,
+    ) -> Screens {
         let count = files.len();
         let mut screens = Vec::new();
         for file in files.into_iter() {
             let index = file.index();
-            let mut screen = Screen::new(file);
+            let mut screen = Screen::new(file, config.clone());
             screen.set_progress(progress.clone());
             screen.set_error_file(error_files.remove(index));
             screens.push(screen);
@@ -146,13 +154,37 @@ impl Screens {
 
 /// Start displaying files.
 pub(crate) fn start(
-    term: impl Terminal,
+    mut term: impl Terminal,
     term_caps: TermCapabilities,
-    events: EventStream,
+    mut events: EventStream,
     files: Vec<File>,
     error_files: VecMap<File>,
     progress: Option<Progress>,
+    config: Config,
 ) -> Result<(), Error> {
+    let outcome = {
+        // Only take the first output and error. This emulates the behavior that
+        // the main pager can only display one stream at a time.
+        let output_files = &files[0..1.min(files.len())];
+        let error_files = match error_files.iter().nth(0) {
+            None => Vec::new(),
+            Some((_i, file)) => vec![file.clone()],
+        };
+        direct::direct(
+            &mut term,
+            output_files,
+            &error_files[..],
+            progress.as_ref(),
+            &mut events,
+            config.interface_mode,
+        )?
+    };
+    match outcome {
+        direct::Outcome::RenderComplete | direct::Outcome::Interrupted => return Ok(()),
+        direct::Outcome::RenderIncomplete => (),
+        direct::Outcome::RenderNothing => term.enter_alternate_screen()?,
+    }
+
     let mut term = guard(term, |mut term| {
         // Clean up when exiting.  Most of this should be achieved by exiting
         // the alternate screen, but just in case it isn't, move to the
@@ -173,12 +205,12 @@ pub(crate) fn start(
         ])
         .unwrap();
     });
+    let config = Arc::new(config);
     let caps = Capabilities::new(term_caps);
-    let mut screens = Screens::new(files, error_files, progress);
+    let mut screens = Screens::new(files, error_files, progress, config.clone());
     let event_sender = events.sender();
     let render_unique = UniqueInstance::new();
     let refresh_unique = UniqueInstance::new();
-    term.enter_alternate_screen()?;
     {
         let screen = screens.current();
         let size = term.get_screen_size()?;
@@ -289,12 +321,15 @@ pub(crate) fn start(
                 }
                 Action::ShowHelp => {
                     let overlay_index = screens.overlay_index + 1;
-                    let mut screen = Screen::new(File::new_static(
-                        overlay_index,
-                        "HELP",
-                        include_bytes!("help.txt"),
-                        event_sender.clone(),
-                    )?);
+                    let mut screen = Screen::new(
+                        File::new_static(
+                            overlay_index,
+                            "HELP",
+                            include_bytes!("help.txt"),
+                            event_sender.clone(),
+                        )?,
+                        config.clone(),
+                    );
                     let size = term.get_screen_size()?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();

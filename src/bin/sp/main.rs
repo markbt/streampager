@@ -12,10 +12,11 @@ use std::fmt::Write;
 use std::os::unix::io::{FromRawFd, RawFd};
 #[cfg(unix)]
 use std::str::FromStr;
+use std::time::Duration;
 use termwiz::istty::IsTty;
 use vec_map::VecMap;
 
-use streampager::Pager;
+use streampager::{config::InterfaceMode, Pager};
 
 mod app;
 
@@ -51,6 +52,22 @@ enum FileSpec {
 /// Run the pager, opening files or file descriptors (including stdin).
 fn open_files(args: ArgMatches) -> Result<(), Error> {
     let mut pager = Pager::new_using_system_terminal()?;
+    let mode = {
+        let delayed = args
+            .value_of("delayed")
+            .map(|ms| ms.parse::<u64>())
+            .transpose()?;
+        let alternate = !args.is_present("no_alternate");
+        match (alternate, delayed) {
+            (_, Some(0)) => InterfaceMode::FullScreen,
+            (true, None) => InterfaceMode::Delayed(Duration::from_secs(2)),
+            (true, Some(ms)) => InterfaceMode::Delayed(Duration::from_secs(ms)),
+            (false, None) => InterfaceMode::Hybrid,
+            (false, Some(_)) => bail!("--delayed and --no-alternate cannot be use together"),
+        }
+    };
+    pager.set_interface_mode(mode);
+
     let mut specs = VecMap::new();
 
     // Collect file specifications from arguments.
@@ -109,10 +126,6 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
                     specs.insert(1, FileSpec::ErrorFd(fd, title.to_string()));
                 }
             }
-        }
-
-        if !args.is_present("force") {
-            pager.set_delay_fullscreen(true);
         }
     }
 
