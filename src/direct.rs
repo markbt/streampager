@@ -77,6 +77,7 @@ pub(crate) fn direct<T: Terminal>(
             let index = file.index();
             let mut lines = file.lines();
             let last = last_read.get(index).cloned().unwrap_or(0);
+            file.set_needed_lines(last + max_lines);
             // Ignore the incomplete last line if the file is loading.
             if lines > 0
                 && !file.loaded()

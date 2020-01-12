@@ -465,7 +465,7 @@ impl Screen {
             return Ok(());
         }
 
-        if !self.file.loaded() {
+        if !self.file.loaded() && !self.file.paused() {
             let frame_index = (self.animation_start.elapsed().subsec_millis() / 200) as usize;
             let frame = ["•    ", " •   ", "  •  ", "   • ", "    •"][frame_index];
             changes.push(Change::Text(format!("  {} ", frame)));
@@ -475,15 +475,25 @@ impl Screen {
             width -= 2;
         }
 
+        let indicator = if self.file.loaded() {
+            // Completed.
+            ""
+        } else if self.file.paused() {
+            " [paused loading]"
+        } else {
+            " [loading]"
+        };
+        let iw = indicator.len();
+
         // The right-hand side is shown only if it can fit.  Work out what fits.
         //
         // The right-hand-side has the following layout:
-        //   [offset]  lines [ start line ]-[ end line ]/[line count]
-        //    6      8        lw           1 lw         1 lw         1
+        //   [offset]  lines [ start line ]-[ end line ]/[line count] [loading]
+        //    6      8        lw           1 lw         1 lw                iw 1
         // lw is the width of the line count.
         let lines = self.file.lines();
         let lw = self.file.line_number_width();
-        let right_width = 3 * lw + 18;
+        let right_width = 3 * lw + 18 + iw;
         let mut left_width = width;
         if width >= right_width {
             left_width -= right_width;
@@ -516,12 +526,13 @@ impl Screen {
             let overlay_height = self.overlay_height();
             let bottom = self.position.top + self.position.height - overlay_height;
             changes.push(Change::Text(format!(
-                "{1:+6.6}  lines {2:0$.0$}-{3:0$.0$}/{4:0$.0$}",
+                "{1:+6.6}  lines {2:0$.0$}-{3:0$.0$}/{4:0$.0$}{5}",
                 lw,
                 self.position.left + 1,
                 self.position.top + 1,
                 min(bottom + 1, lines),
-                lines
+                lines,
+                indicator,
             )));
             changes.push(Change::ClearToEndOfLine(AnsiColor::Silver.into()));
         }
@@ -832,7 +843,7 @@ impl Screen {
     /// Returns true if this screen is currently animating for any reason.
     pub(crate) fn animate(&self) -> bool {
         self.error_file.is_some()
-            || !self.file.loaded()
+            || (!self.file.loaded() && !self.file.paused())
             || self.following_end
             || self
                 .search
@@ -920,5 +931,13 @@ impl Screen {
             }
             self.refresh_matched_line();
         }
+    }
+
+    /// Load more lines from a stream.
+    pub(crate) fn maybe_load_more(&mut self) {
+        // Fetch 1 screen + config.read_ahead_lines.
+        let needed_lines =
+            self.position.top + self.position.height * 2 + self.config.read_ahead_lines;
+        self.file.set_needed_lines(needed_lines);
     }
 }

@@ -215,6 +215,7 @@ pub(crate) fn start(
         let screen = screens.current();
         let size = term.get_screen_size()?;
         screen.resize(size.cols, size.rows);
+        screen.maybe_load_more();
         term.render(&screen.render(&caps)?)?;
     }
     loop {
@@ -229,6 +230,8 @@ pub(crate) fn start(
         // Dispatch the event and receive an action to take.
         let mut action = {
             let screen = screens.current();
+            screen.maybe_load_more();
+
             match event {
                 None => screen.dispatch_animation()?,
                 Some(Event::Render) => {

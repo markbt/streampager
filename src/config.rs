@@ -90,6 +90,9 @@ pub struct Config {
 
     /// Specify whether scrolling down can past end of file.
     pub scroll_past_eof: bool,
+
+    /// Specify how many lines to read ahead.
+    pub read_ahead_lines: usize,
 }
 
 impl Config {
@@ -105,6 +108,10 @@ impl Config {
                 .ok()
                 .and_then(|s| parse_bool(&s))
                 .unwrap_or(true),
+            read_ahead_lines: var("SP_READ_AHEAD_LINES")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(crate::file::DEFAULT_NEEDED_LINES),
         }
     }
 }

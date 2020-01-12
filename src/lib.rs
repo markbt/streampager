@@ -172,6 +172,12 @@ impl Pager {
         self
     }
 
+    /// Set how many lines to read ahead.
+    pub fn set_read_ahead_lines(&mut self, lines: usize) -> &mut Self {
+        self.config.read_ahead_lines = lines;
+        self
+    }
+
     /// Run Stream Pager.
     pub fn run(self) -> Result<()> {
         display::start(
