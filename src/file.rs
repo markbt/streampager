@@ -7,7 +7,7 @@ use std::ffi::OsStr;
 use std::io::{Read, Seek, SeekFrom};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
 
 use crate::buffer::Buffer;
@@ -56,7 +56,19 @@ struct FileMeta {
 
     /// The most recent error encountered when loading the file.
     error: RwLock<Option<Error>>,
+
+    /// If needed_lines > newlines.len(), pause loading.
+    needed_lines: AtomicUsize,
+
+    /// CondVar to wake up file loading.
+    waker: Condvar,
+
+    /// Mutex used by waker.
+    waker_mutex: Mutex<()>,
 }
+
+/// Default value for `needed_lines`.
+pub(crate) const DEFAULT_NEEDED_LINES: usize = 5000;
 
 impl FileMeta {
     /// Create new file metadata.
@@ -69,6 +81,9 @@ impl FileMeta {
             newlines: RwLock::new(Vec::new()),
             finished: AtomicBool::new(false),
             error: RwLock::new(None),
+            needed_lines: AtomicUsize::new(DEFAULT_NEEDED_LINES),
+            waker: Condvar::new(),
+            waker_mutex: Mutex::new(()),
         }
     }
 }
@@ -92,6 +107,7 @@ impl FileData {
             move || {
                 let mut offset = 0usize;
                 let mut total_buffer_size = 0usize;
+                let mut waker_mutex = meta.waker_mutex.lock().unwrap();
                 loop {
                     // Check if a new buffer must be allocated.
                     if offset == total_buffer_size {
@@ -110,15 +126,22 @@ impl FileData {
                         }
                         Ok(len) => {
                             // Some data has been read.  Parse its newlines.
-                            let mut newlines = meta.newlines.write().unwrap();
-                            for i in 0..len {
-                                if write[i] == b'\n' {
-                                    newlines.push(offset + i);
+                            let line_count = {
+                                let mut newlines = meta.newlines.write().unwrap();
+                                for i in 0..len {
+                                    if write[i] == b'\n' {
+                                        newlines.push(offset + i);
+                                    }
                                 }
-                            }
+                                newlines.len()
+                            };
                             offset += len;
                             write.written(len);
                             meta.length.fetch_add(len, Ordering::SeqCst);
+                            while line_count >= meta.needed_lines.load(Ordering::SeqCst) {
+                                // Enough data is loaded. Pause.
+                                waker_mutex = meta.waker.wait(waker_mutex).unwrap();
+                            }
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
                         Err(e) => {
@@ -409,5 +432,24 @@ impl File {
             return None;
         }
         Some(self.data.with_slice(start, end, call))
+    }
+
+    /// Set how many lines are needed.
+    ///
+    /// If `self.lines()` exceeds that number, pause loading until
+    /// `set_needed_lines` is called with a larger number.
+    /// This is only effective for "streamed" input.
+    pub(crate) fn set_needed_lines(&self, lines: usize) {
+        // This can be simplified by `fetch_max` when it's stable.
+        if self.meta.needed_lines.load(Ordering::SeqCst) >= lines {
+            return;
+        }
+        self.meta.needed_lines.store(lines, Ordering::SeqCst);
+        self.meta.waker.notify_all();
+    }
+
+    /// Check if the loading thread has been paused.
+    pub(crate) fn paused(&self) -> bool {
+        !self.loaded() && self.meta.waker_mutex.try_lock().is_ok()
     }
 }
