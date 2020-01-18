@@ -529,6 +529,8 @@ impl Line {
 mod test {
     use super::Span::*;
     use super::*;
+    use termwiz::color::ColorSpec;
+
     #[test]
     fn test_parse_spans() {
         assert_eq!(parse_spans(b"hello", None), vec![Text("hello".to_string())]);
@@ -584,9 +586,9 @@ mod test {
         assert_eq!(
             parse_spans(b"\x1B[1mBold!\x1B[m", None),
             vec![
-                SgrSequence(SmallVec::from_slice(&[27, 91, 49, 109])),
+                SgrSequence(SmallVec::from(&[Sgr::Intensity(Intensity::Bold)][..])),
                 Text("Bold!".to_string()),
-                SgrSequence(SmallVec::from_slice(&[27, 91, 109]))
+                SgrSequence(SmallVec::from(&[Sgr::Reset][..]))
             ]
         );
         assert_eq!(
@@ -596,11 +598,26 @@ mod test {
             ),
             vec![
                 Text("Multi".to_string()),
-                SgrSequence(SmallVec::from_slice(&[27, 91, 51, 49, 59, 55, 109])),
+                SgrSequence(SmallVec::from(
+                    &[
+                        Sgr::Foreground(ColorSpec::PaletteIndex(1)),
+                        Sgr::Inverse(true)
+                    ][..]
+                )),
                 Text("-colored ".to_string()),
-                SgrSequence(SmallVec::from_slice(&[27, 91, 51, 54, 59, 49, 109])),
+                SgrSequence(SmallVec::from(
+                    &[
+                        Sgr::Foreground(ColorSpec::PaletteIndex(6)),
+                        Sgr::Intensity(Intensity::Bold)
+                    ][..]
+                )),
                 Text("text".to_string()),
-                SgrSequence(SmallVec::from_slice(&[27, 91, 52, 50, 59, 49, 109])),
+                SgrSequence(SmallVec::from(
+                    &[
+                        Sgr::Background(ColorSpec::PaletteIndex(2)),
+                        Sgr::Intensity(Intensity::Bold)
+                    ][..]
+                )),
                 Text(" line".to_string())
             ]
         );
