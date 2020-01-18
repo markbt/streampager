@@ -21,6 +21,7 @@ use crate::prompt::Prompt;
 use crate::refresh::Refresh;
 use crate::ruler::Ruler;
 use crate::search::{MatchMotion, Search, SearchKind};
+use crate::util::number_width;
 
 const LINE_CACHE_SIZE: usize = 1000;
 
@@ -407,7 +408,7 @@ impl Screen {
             let start = self.position.left;
             let mut end = self.position.left + self.position.width;
             if self.line_numbers {
-                let lw = self.file.line_number_width();
+                let lw = number_width(self.file.lines());
                 if lw + 2 < self.position.width {
                     changes.push(Change::AllAttributes(
                         CellAttributes::default()
@@ -846,6 +847,11 @@ impl Screen {
             }
             self.refresh_matched_line();
         }
+    }
+
+    pub(crate) fn flush_line_caches(&mut self) {
+        self.line_cache.clear();
+        self.search_line_cache.clear();
     }
 
     /// Load more lines from a stream.
