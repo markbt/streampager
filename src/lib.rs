@@ -11,6 +11,7 @@ use termwiz::caps::{Capabilities, ProbeHintsBuilder};
 use termwiz::terminal::{SystemTerminal, Terminal};
 use vec_map::VecMap;
 
+mod bar;
 mod buffer;
 mod command;
 pub mod config;
@@ -24,8 +25,10 @@ mod overstrike;
 mod progress;
 mod prompt;
 mod refresh;
+mod ruler;
 mod screen;
 mod search;
+mod util;
 
 use config::{Config, InterfaceMode};
 use event::EventStream;

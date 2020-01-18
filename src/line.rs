@@ -2,7 +2,6 @@
 use regex::bytes::{NoExpand, Regex};
 use smallvec::SmallVec;
 use std::borrow::Cow;
-use std::cmp::min;
 use std::str;
 use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
@@ -18,6 +17,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::overstrike;
 use crate::search::{trim_trailing_newline, ESCAPE_SEQUENCE};
+use crate::util;
 
 const LEFT_ARROW: &str = "<";
 const RIGHT_ARROW: &str = ">";
@@ -180,41 +180,12 @@ fn write_truncated(
         if let Some(change) = attr_state.style(style)? {
             changes.push(change);
         }
-        if position >= start && position + text_width <= end {
-            changes.push(Change::Text(text.into()));
-        } else {
-            let start = start - min(start, position);
-            let end = end - position;
-            let mut offset = 0;
-            let mut start_index = None;
-            let mut end_index = None;
-            let mut start_gap = 0;
-            let mut end_gap = 0;
-            for (i, g) in text.grapheme_indices(true) {
-                let w = g.width();
-                if w != 0 {
-                    if offset >= start && start_index.is_none() {
-                        start_index = Some(i);
-                        start_gap = offset - start;
-                    }
-                    if offset + w > end && end_index.is_none() {
-                        end_index = Some(i);
-                        end_gap = end - offset;
-                        break;
-                    }
-                    offset += w;
-                }
-            }
-            let start_index = start_index.unwrap_or_else(|| text.len());
-            let end_index = end_index.unwrap_or_else(|| text.len());
-            changes.push(Change::Text(format!(
-                "{0:1$.1$}{3}{0:2$.2$}",
-                "",
-                start_gap,
-                end_gap,
-                &text[start_index..end_index]
-            )));
-        }
+        let offset = start.saturating_sub(position);
+        changes.push(Change::Text(util::truncate_string(
+            text,
+            offset,
+            end - offset,
+        )));
     }
     Ok(position + text_width)
 }

@@ -2,13 +2,11 @@
 use anyhow::Error;
 use std::cmp::{max, min};
 use std::sync::Arc;
-use std::time::Instant;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;
 use termwiz::surface::{CursorShape, Position};
-use unicode_width::UnicodeWidthStr;
 
 use crate::command;
 use crate::config::Config;
@@ -21,6 +19,7 @@ use crate::line_cache::LineCache;
 use crate::progress::Progress;
 use crate::prompt::Prompt;
 use crate::refresh::Refresh;
+use crate::ruler::Ruler;
 use crate::search::{MatchMotion, Search, SearchKind};
 
 const LINE_CACHE_SIZE: usize = 1000;
@@ -95,11 +94,11 @@ pub(crate) struct Screen {
     /// The current ongoing search.
     search: Option<Search>,
 
+    /// The ruler.
+    ruler: Ruler,
+
     /// Which parts of the screens need to be re-rendered.
     pending_refresh: Refresh,
-
-    /// The time that animations started.
-    animation_start: Instant,
 
     /// Configuration set by the top-level `Pager`.
     config: Arc<Config>,
@@ -109,7 +108,6 @@ impl Screen {
     /// Create a screen that displays a file.
     pub(crate) fn new(file: File, config: Arc<Config>) -> Screen {
         Screen {
-            file,
             error_file: None,
             progress: None,
             position: ScreenPosition::default(),
@@ -126,9 +124,10 @@ impl Screen {
             error: None,
             prompt: None,
             search: None,
+            ruler: Ruler::new(file.clone()),
             pending_refresh: Refresh::None,
-            animation_start: Instant::now(),
             config,
+            file,
         }
     }
 
@@ -152,6 +151,13 @@ impl Screen {
 
         // Hide the cursor while we render things.
         changes.push(Change::CursorShape(CursorShape::Hidden));
+
+        self.ruler.set_position(
+            self.position.top,
+            self.position.left,
+            Some(self.position.top + self.position.height - self.overlay_height())
+                .filter(|_| !self.following_end),
+        );
 
         // Work out what needs to be refreshed because we have scrolled.
         let rendered_height = self.rendered_position.height;
@@ -339,7 +345,10 @@ impl Screen {
         }
         // Ruler
         if line_index == index {
-            return self.render_ruler(changes, line_index);
+            self.ruler
+                .bar()
+                .render(changes, line_index, self.position.width);
+            return Ok(());
         }
         line_index -= 1;
         // Search results.
@@ -362,6 +371,7 @@ impl Screen {
                 return self.render_error(changes, line_index);
             }
         }
+
         Ok(())
     }
 
@@ -442,101 +452,6 @@ impl Screen {
             changes.push(Change::AllAttributes(CellAttributes::default()));
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
-        Ok(())
-    }
-
-    /// Renders the ruler at the bottom of the screen.
-    fn render_ruler(&mut self, changes: &mut Vec<Change>, row: usize) -> Result<(), Error> {
-        changes.push(Change::CursorPosition {
-            x: Position::Absolute(0),
-            y: Position::Absolute(row),
-        });
-        changes.push(Change::AllAttributes(
-            CellAttributes::default()
-                .set_foreground(AnsiColor::Black)
-                .set_background(AnsiColor::Silver)
-                .clone(),
-        ));
-        let mut width = self.position.width;
-
-        if width < 8 {
-            // The screen is too small to write anything, just write a blank ruler.
-            changes.push(Change::ClearToEndOfLine(AnsiColor::Silver.into()));
-            return Ok(());
-        }
-
-        if !self.file.loaded() && !self.file.paused() {
-            let frame_index = (self.animation_start.elapsed().subsec_millis() / 200) as usize;
-            let frame = ["•    ", " •   ", "  •  ", "   • ", "    •"][frame_index];
-            changes.push(Change::Text(format!("  {} ", frame)));
-            width -= 8;
-        } else {
-            changes.push(Change::Text("  ".to_string()));
-            width -= 2;
-        }
-
-        let indicator = if self.file.loaded() {
-            // Completed.
-            ""
-        } else if self.file.paused() {
-            " [paused loading]"
-        } else {
-            " [loading]"
-        };
-        let iw = indicator.len();
-
-        // The right-hand side is shown only if it can fit.  Work out what fits.
-        //
-        // The right-hand-side has the following layout:
-        //   [offset]  lines [ start line ]-[ end line ]/[line count] [loading]
-        //    6      8        lw           1 lw         1 lw                iw 1
-        // lw is the width of the line count.
-        let lines = self.file.lines();
-        let lw = self.file.line_number_width();
-        let right_width = 3 * lw + 18 + iw;
-        let mut left_width = width;
-        if width >= right_width {
-            left_width -= right_width;
-        }
-
-        // Write the left-hand-side if it fits.
-        if left_width > 1 {
-            let info = self.file.info();
-            let info_width = info.width();
-            if info_width > 0 && info_width + 2 < left_width {
-                changes.push(Change::Text(format!(
-                    "{1:0$.0$} {2} ",
-                    left_width - info_width - 2,
-                    self.file.title(),
-                    info
-                )));
-            } else {
-                changes.push(Change::Text(format!(
-                    "{1:0$.0$} ",
-                    left_width - 1,
-                    self.file.title()
-                )));
-            }
-        } else if left_width == 1 {
-            changes.push(Change::Text(" ".to_string()));
-        }
-
-        // Write the right-hand-side if it fits.
-        if width >= right_width {
-            let overlay_height = self.overlay_height();
-            let bottom = self.position.top + self.position.height - overlay_height;
-            changes.push(Change::Text(format!(
-                "{1:+6.6}  lines {2:0$.0$}-{3:0$.0$}/{4:0$.0$}{5}",
-                lw,
-                self.position.left + 1,
-                self.position.top + 1,
-                min(bottom + 1, lines),
-                lines,
-                indicator,
-            )));
-            changes.push(Change::ClearToEndOfLine(AnsiColor::Silver.into()));
-        }
-
         Ok(())
     }
 
