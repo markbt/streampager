@@ -21,7 +21,7 @@ pub(crate) fn truncate_string<'a>(
     width: usize,
 ) -> String {
     let text = text.into();
-    if text.width() < width {
+    if offset > 0 || text.width() < width {
         let mut column = 0;
         let mut maybe_start_index = None;
         let mut maybe_end_index = None;
