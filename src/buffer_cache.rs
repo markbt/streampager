@@ -38,11 +38,7 @@ impl BufferCache {
         Ok(())
     }
 
-    fn get_buffer<'a>(
-        &'a mut self,
-        start: usize,
-        end: usize,
-    ) -> Result<Option<&'a mut Buffer>, Error> {
+    fn get_buffer(&mut self, start: usize, end: usize) -> Result<Option<&mut Buffer>, Error> {
         let block_index = start / self.block_size;
         let block_offset = start % self.block_size;
         self.open_file()?;
@@ -68,7 +64,7 @@ impl BufferCache {
         Ok(self.cache.get_mut(&block_index))
     }
 
-    fn get_data<'a>(&'a mut self, start: usize, end: usize) -> Result<&'a [u8], Error> {
+    fn get_data(&mut self, start: usize, end: usize) -> Result<&[u8], Error> {
         let block_size = self.block_size;
         if let Some(buffer) = self.get_buffer(start, end)? {
             let data = buffer.read();

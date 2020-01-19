@@ -249,7 +249,7 @@ impl StreamingLines {
             // XXX: This is a workaround to a bug in termwiz. It is only correct
             // with the buggy termwiz! See https://github.com/wez/wezterm/pull/109.
             // let dy = -(erase_line_count as isize);
-            let dy = (0xffffffff00000000u64 | (erase_line_count as u64)) as isize;
+            let dy = (0xffff_ffff_0000_0000u64 | (erase_line_count as u64)) as isize;
             changes.push(Change::CursorPosition {
                 x: Position::NoChange,
                 y: Position::Relative(dy),

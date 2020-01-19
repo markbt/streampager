@@ -281,7 +281,9 @@ pub(crate) fn start(
                     Some(Action::Refresh)
                 }
                 Some(Event::Reloading(index)) => {
-                    screens.get(index).map(|screen| screen.flush_line_caches());
+                    if let Some(screen) = screens.get(index) {
+                        screen.flush_line_caches();
+                    }
                     if screens.is_current_index(index) {
                         Some(Action::Refresh)
                     } else {

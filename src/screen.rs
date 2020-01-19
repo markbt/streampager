@@ -1,6 +1,6 @@
 //! A screen displaying a single file.
 use anyhow::Error;
-use std::cmp::{max, min};
+use std::cmp::{max, min, Ordering};
 use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
@@ -164,36 +164,43 @@ impl Screen {
         let rendered_height = self.rendered_position.height;
         let file_height = rendered_height.saturating_sub(self.rendered_overlay_height);
         if self.pending_refresh != Refresh::All {
-            if self.position.top > self.rendered_position.top {
-                if !caps.scroll_up || self.position.top > self.rendered_position.top + file_height {
-                    // Can't scroll, or scrolled too far, refresh.
-                    self.pending_refresh.add_range(0, file_height);
-                } else {
-                    // Moving down the file, so scroll the content up.
-                    let scroll_count = self.position.top - self.rendered_position.top;
-                    changes.push(Change::ScrollRegionUp {
-                        first_row: 0,
-                        region_size: file_height,
-                        scroll_count,
-                    });
-                    self.pending_refresh
-                        .add_range(file_height - scroll_count, file_height);
+            match self.position.top.cmp(&self.rendered_position.top) {
+                Ordering::Greater => {
+                    if !caps.scroll_up
+                        || self.position.top > self.rendered_position.top + file_height
+                    {
+                        // Can't scroll, or scrolled too far, refresh.
+                        self.pending_refresh.add_range(0, file_height);
+                    } else {
+                        // Moving down the file, so scroll the content up.
+                        let scroll_count = self.position.top - self.rendered_position.top;
+                        changes.push(Change::ScrollRegionUp {
+                            first_row: 0,
+                            region_size: file_height,
+                            scroll_count,
+                        });
+                        self.pending_refresh
+                            .add_range(file_height - scroll_count, file_height);
+                    }
                 }
-            } else if self.position.top < self.rendered_position.top {
-                if !caps.scroll_down || self.position.top + file_height < self.rendered_position.top
-                {
-                    // Can't scroll, or scrolled too far, refresh.
-                    self.pending_refresh.add_range(0, file_height);
-                } else {
-                    // Moving up the file, so scroll the content down.
-                    let scroll_count = self.rendered_position.top - self.position.top;
-                    changes.push(Change::ScrollRegionDown {
-                        first_row: 0,
-                        region_size: file_height,
-                        scroll_count,
-                    });
-                    self.pending_refresh.add_range(0, scroll_count);
+                Ordering::Less => {
+                    if !caps.scroll_down
+                        || self.position.top + file_height < self.rendered_position.top
+                    {
+                        // Can't scroll, or scrolled too far, refresh.
+                        self.pending_refresh.add_range(0, file_height);
+                    } else {
+                        // Moving up the file, so scroll the content down.
+                        let scroll_count = self.rendered_position.top - self.position.top;
+                        changes.push(Change::ScrollRegionDown {
+                            first_row: 0,
+                            region_size: file_height,
+                            scroll_count,
+                        });
+                        self.pending_refresh.add_range(0, scroll_count);
+                    }
                 }
+                Ordering::Equal => {}
             }
         }
 

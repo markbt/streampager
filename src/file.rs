@@ -264,8 +264,8 @@ impl FileData {
                                 Ok(0) => break,
                                 Ok(len) => {
                                     let mut newlines = meta.newlines.write().unwrap();
-                                    for i in 0..len {
-                                        if buffer[i] == b'\n' {
+                                    for (i, byte) in buffer.iter().enumerate().take(len) {
+                                        if *byte == b'\n' {
                                             newlines.push(total_length + i);
                                         }
                                     }
@@ -345,7 +345,7 @@ impl FileData {
                         let mut newlines = meta.newlines.write().unwrap();
                         let count = max(
                             reload_old_line_count.unwrap_or(0),
-                            line_count(&*newlines, total_length),
+                            line_count(newlines.as_slice(), total_length),
                         );
                         *reload_old_line_count = Some(count);
                         newlines.clear();
@@ -355,12 +355,10 @@ impl FileData {
                                 .send_unique(Event::Reloading(meta.index), &reloading_instance)
                                 .unwrap();
                         }
-                    } else {
-                        if send_event {
-                            event_sender
-                                .send_unique(Event::Appending(meta.index), &appending_instance)
-                                .unwrap();
-                        }
+                    } else if send_event {
+                        event_sender
+                            .send_unique(Event::Appending(meta.index), &appending_instance)
+                            .unwrap();
                     }
                     meta.finished.store(false, Ordering::SeqCst);
                 }
@@ -477,9 +475,9 @@ impl FileData {
                 }
             }
             FileData::File {
-                path: _,
                 events,
                 buffer_cache,
+                ..
             } => {
                 let mut buffer_cache = buffer_cache.lock().unwrap();
                 buffer_cache
@@ -640,15 +638,16 @@ impl File {
 
     /// Returns the number of lines in the file.
     pub(crate) fn lines(&self) -> usize {
-        let mut lines = 0;
-        if !self.meta.finished.load(Ordering::SeqCst) {
+        let lines = if !self.meta.finished.load(Ordering::SeqCst) {
             let reload_old_line_count = self.meta.reload_old_line_count.read().unwrap();
-            lines = reload_old_line_count.unwrap_or(0);
-        }
+            reload_old_line_count.unwrap_or(0)
+        } else {
+            0
+        };
         let newlines = self.meta.newlines.read().unwrap();
         max(
             lines,
-            line_count(&*newlines, self.meta.length.load(Ordering::SeqCst)),
+            line_count(newlines.as_slice(), self.meta.length.load(Ordering::SeqCst)),
         )
     }
 
@@ -699,7 +698,7 @@ impl File {
     }
 }
 
-fn line_count(newlines: &Vec<usize>, length: usize) -> usize {
+fn line_count(newlines: &[usize], length: usize) -> usize {
     let mut lines = newlines.len();
     let after_last_newline_offset = if lines == 0 {
         0

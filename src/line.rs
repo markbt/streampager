@@ -2,6 +2,7 @@
 use regex::bytes::{NoExpand, Regex};
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::str;
 use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
@@ -534,31 +535,31 @@ impl Line {
         for span in self.spans.iter() {
             position = span.render(changes, &mut attr_state, start, end, position, search_index)?;
         }
-        if position > end {
-            // There is more text after the end of the line, so we need to
-            // render the right arrow.
-            //
-            // The cursor should be in the final column of the line.  However,
-            // we need to work around strange terminal behaviour when setting
-            // styles at the end of the line by backspacing and then moving
-            // forwards.
-            changes.push(Change::Text("\x08".into()));
-            changes.push(Change::CursorPosition {
-                x: Position::Relative(1),
-                y: Position::NoChange,
-            });
-            changes.push(Change::AllAttributes(
-                CellAttributes::default()
-                    .set_foreground(AnsiColor::Navy)
-                    .set_intensity(Intensity::Bold)
-                    .clone(),
-            ));
-            changes.push(RIGHT_ARROW.into());
-            changes.push(Change::AllAttributes(CellAttributes::default()));
-        } else if position == end {
-            changes.push(Change::AllAttributes(CellAttributes::default()));
-        } else {
-            changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+        match position.cmp(&end) {
+            Ordering::Greater => {
+                // There is more text after the end of the line, so we need to
+                // render the right arrow.
+                //
+                // The cursor should be in the final column of the line.  However,
+                // we need to work around strange terminal behaviour when setting
+                // styles at the end of the line by backspacing and then moving
+                // forwards.
+                changes.push(Change::Text("\x08".into()));
+                changes.push(Change::CursorPosition {
+                    x: Position::Relative(1),
+                    y: Position::NoChange,
+                });
+                changes.push(Change::AllAttributes(
+                    CellAttributes::default()
+                        .set_foreground(AnsiColor::Navy)
+                        .set_intensity(Intensity::Bold)
+                        .clone(),
+                ));
+                changes.push(RIGHT_ARROW.into());
+                changes.push(Change::AllAttributes(CellAttributes::default()));
+            }
+            Ordering::Equal => changes.push(Change::AllAttributes(CellAttributes::default())),
+            Ordering::Less => changes.push(Change::ClearToEndOfLine(ColorAttribute::default())),
         }
         Ok(())
     }

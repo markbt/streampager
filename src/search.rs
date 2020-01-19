@@ -247,14 +247,14 @@ impl Search {
         }
 
         // Write the left-hand side if it fits.
-        if left_width > 1 {
-            changes.push(Change::Text(format!(
+        match left_width {
+            0 => {}
+            1 => changes.push(Change::Text(" ".into())),
+            _ => changes.push(Change::Text(format!(
                 "{1:0$.0$} ",
                 left_width - 1,
                 self.inner.pattern
-            )));
-        } else if left_width == 1 {
-            changes.push(Change::Text(" ".into()));
+            ))),
         }
 
         // Write the right-hand side if it fits.

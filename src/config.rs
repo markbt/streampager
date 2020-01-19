@@ -67,13 +67,13 @@ impl From<&str> for InterfaceMode {
             "direct" => InterfaceMode::Direct,
             "hybrid" => InterfaceMode::Hybrid,
             s if s.starts_with("delayed") => {
-                let duration = s.rsplit(":").nth(0).unwrap_or("inf");
+                let duration = s.rsplit(':').nth(0).unwrap_or("inf");
                 let duration = if duration.ends_with("ms") {
                     // ex. delayed:100ms
                     Duration::from_millis(duration.trim_end_matches("ms").parse().unwrap_or(0))
                 } else {
                     // ex. delayed:1s, delayed:1, delayed
-                    Duration::from_secs(duration.trim_end_matches("s").parse().unwrap_or(1 << 30))
+                    Duration::from_secs(duration.trim_end_matches('s').parse().unwrap_or(1 << 30))
                 };
                 InterfaceMode::Delayed(duration)
             }
@@ -103,7 +103,7 @@ impl Config {
             interface_mode: var("SP_INTERFACE_MODE")
                 .ok()
                 .map(|s| InterfaceMode::from(s.as_ref()))
-                .unwrap_or(Default::default()),
+                .unwrap_or_default(),
             scroll_past_eof: var("SP_SCROLL_PAST_EOF")
                 .ok()
                 .and_then(|s| parse_bool(&s))

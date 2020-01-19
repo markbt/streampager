@@ -156,7 +156,7 @@ impl PromptState {
 
     /// Delete previous word.
     fn delete_prev_word(&mut self) -> Option<Action> {
-        let dest = move_word_backwards(&self.value, self.position);
+        let dest = move_word_backwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.value.splice(dest..self.position, None);
             self.position = dest;
@@ -168,7 +168,7 @@ impl PromptState {
 
     /// Delete next word.
     fn delete_next_word(&mut self) -> Option<Action> {
-        let dest = move_word_forwards(&self.value, self.position);
+        let dest = move_word_forwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.value.splice(self.position..dest, None);
             Some(Action::RefreshPrompt)
@@ -212,7 +212,7 @@ impl PromptState {
 
     /// Move right one word.
     fn move_next_word(&mut self) -> Option<Action> {
-        let dest = move_word_forwards(&self.value, self.position);
+        let dest = move_word_forwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.position = dest;
             Some(Action::RefreshPrompt)
@@ -223,10 +223,10 @@ impl PromptState {
 
     /// Move left one word.
     fn move_prev_word(&mut self) -> Option<Action> {
-        let dest = move_word_backwards(&self.value, self.position);
+        let dest = move_word_backwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.position = dest;
-            return Some(Action::RefreshPrompt);
+            Some(Action::RefreshPrompt)
         } else {
             None
         }
@@ -379,7 +379,7 @@ impl Prompt {
     }
 }
 
-fn move_word_forwards(value: &Vec<char>, mut position: usize) -> usize {
+fn move_word_forwards(value: &[char], mut position: usize) -> usize {
     let len = value.len();
     while position < len && value[position].is_whitespace() {
         position += 1;
@@ -390,7 +390,7 @@ fn move_word_forwards(value: &Vec<char>, mut position: usize) -> usize {
     position
 }
 
-fn move_word_backwards(value: &Vec<char>, mut position: usize) -> usize {
+fn move_word_backwards(value: &[char], mut position: usize) -> usize {
     while position > 0 {
         position -= 1;
         if !value[position].is_whitespace() {

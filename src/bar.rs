@@ -110,14 +110,14 @@ impl Bar {
         changes.push(Change::Text(String::from("  ")));
         let rendered_left_width = self.render_items(
             changes,
-            &self.left_items,
+            self.left_items.as_slice(),
             left_items_width.saturating_sub(2),
         );
         if right_items_width > 0 {
-            changes.push(Change::AllAttributes(bar_attribs.clone()));
+            changes.push(Change::AllAttributes(bar_attribs));
             let gap = left_items_width.saturating_sub(rendered_left_width);
             changes.push(Change::Text(" ".repeat(gap)));
-            self.render_items(changes, &self.right_items, right_items_width);
+            self.render_items(changes, self.right_items.as_slice(), right_items_width);
         }
         changes.push(Change::ClearToEndOfLine(
             self.style.background_color().into(),
@@ -127,7 +127,7 @@ impl Bar {
     fn render_items(
         &self,
         changes: &mut Vec<Change>,
-        items: &Vec<Arc<dyn BarItem>>,
+        items: &[Arc<dyn BarItem>],
         width: usize,
     ) -> usize {
         let mut rendered_width = 0;

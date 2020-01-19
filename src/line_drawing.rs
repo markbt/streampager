@@ -14,7 +14,7 @@ use regex::Regex;
 const REPLACEMENTS_START: usize = 0x5F;
 
 // The bytes starting with 0x5F are replaced with the following unicode strings.
-const UNICODE_REPLACEMENTS: &[&'static str] = &[
+const UNICODE_REPLACEMENTS: &[&str] = &[
     "\u{A0}", "◆", "▒", "␉", "␌", "␍", "␊", "°", "±", "␤", "␋", "┘", "┐", "┌", "└", "┼", "⎺", "⎻",
     "─", "⎼", "⎽", "├", "┤", "┴", "┬", "│", "≤", "≥", "π", "≠", "£", "·",
 ];

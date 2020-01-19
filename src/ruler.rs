@@ -14,7 +14,7 @@ use crate::util;
 pub(crate) struct Ruler {
     position: Arc<PositionIndicator>,
     loading: Arc<LoadingIndicator>,
-    bar: Bar,
+    ruler_bar: Bar,
 }
 
 impl Ruler {
@@ -24,21 +24,21 @@ impl Ruler {
         let position = Arc::new(PositionIndicator::new(file.clone()));
         let loading = Arc::new(LoadingIndicator::new(file));
 
-        let mut bar = Bar::new(BarStyle::Normal);
-        bar.add_left_item(title);
-        bar.add_right_item(file_info);
-        bar.add_right_item(position.clone());
-        bar.add_right_item(loading.clone());
+        let mut ruler_bar = Bar::new(BarStyle::Normal);
+        ruler_bar.add_left_item(title);
+        ruler_bar.add_right_item(file_info);
+        ruler_bar.add_right_item(position.clone());
+        ruler_bar.add_right_item(loading.clone());
 
         Ruler {
             position,
             loading,
-            bar,
+            ruler_bar,
         }
     }
 
     pub(crate) fn bar(&self) -> &Bar {
-        &self.bar
+        &self.ruler_bar
     }
 
     pub(crate) fn set_position(&self, top: usize, left: usize, bottom: Option<usize>) {
