@@ -37,8 +37,19 @@ _FILE_::
 Options
 -------
 
-*--force*::
-  Start paging immediately, don't wait to see if input is short.
+*-F*, *--fullscreen*::
+  Start paging immediately, don't wait to see if input is short.  Equivalent
+  to *--delayed 0*.
+
+*-D* _DELAY_, *--delayed* _DELAY_::
+  Wait for _DELAY_ seconds to see if the input completes before paging.  If
+  the input completes in time, and is shorter than one page, then do not
+  start the pager, and instead just show the output.
+
+*-X*, *--no-alternate*::
+  Start showing output immediately, but do not start paging until a full
+  screen of output is provided.  Does not use the alternate screen, leaving
+  the file output in the terminal buffer after exiting.
 
 *-c*, *--command* "_COMMAND_ _ARGS_..."::
   Runs the command in a subshell and displays its output and error streams.
@@ -55,7 +66,7 @@ Options
 Basic Usage
 -----------
 
-If invoked with no arguments, *streampager* reads from stdin, expecting to be
+If invoked with no arguments, *sp* reads from stdin, expecting to be
 invoked as the final command in a pipeline:
 
     command | sp
@@ -63,27 +74,32 @@ invoked as the final command in a pipeline:
 The default paging behaviour depends on how much data is received:
 
 * For programs that produce less than a screenful of output quickly and then
-  exit, *streampager* prints the output to the terminal without paging and also exits.
-* For programs that produce output slowly, *streampager* will wait for two seconds
+  exit, *sp* prints the output to the terminal without paging and also exits.
+* For programs that produce output slowly, *sp* will wait for two seconds
   to see if the program will stop with less than a screenful of output.
-  After two seconds *streampager* stops waiting and starts paging.
+  After two seconds *sp* stops waiting and starts paging.
 
-This behaviour can be disabled, forcing *streampager* to always page the input,
-with the *--force* option.
+This behaviour can be customized:
 
-An animated indicator the bottom left of the screen indicates if the input pipe
-is still connected.
+* The `-X` option prevents the initial buffering of input.  Instead, it will
+  be displayed directly until either a full screen of input is received,
+  or **`Space`** is pressed.
+* The `-D` option changes the delay from its default two seconds.
+* The `-F` option disables the delay entirely, causing fullscreen mode to
+  be entered immediately.
 
-*streampager* can also be used to display files, and efficiently loads large
-files by memory mapping them.
+An indicator at the bottom right of the screen shows if the input pipe is
+still connected, and whether new data is being loaded.
 
-Press *h* or *?* from within *streampager* to display the keyboard shortcuts.
+*sp* can also be used to display files by specifying them by filename.
+
+Press *h* or *?* from within *sp* to display the keyboard shortcuts.
 Press *q* to exit.
 
 Additional Streams
 ------------------
 
-*streampager* can page multiple input streams from different file descriptors
+*sp* can page multiple input streams from different file descriptors
 on separate screens.  The file descriptors for these additional streams can be
 passed in using the *--fd* option.
 
@@ -98,21 +114,21 @@ to the corresponding main stream.
 An additional stream for progress indicators can be provided with the
 *--progress-fd* option.  This input stream expects to receive progress updates
 (e.g. progress bars) terminated by ASCII form-feed characters (*\f* or *\x0C*).
-*streampager* will display the most recently received progress indicator
+*sp* will display the most recently received progress indicator
 at the bottom of the screen.
 
 Progress indicator pages should not contain control codes that are used for
 moving the cursor or clearing parts of the display.  Control codes that affect
 the color or style of output are accepted and passed through to the terminal.
 
-Calling processes that are using *streampager* to page their own output can
+Calling processes that are using *sp* to page their own output can
 also provide the file descriptor for these streams by setting the
 _PAGER_ERROR_FD_ and _PAGER_PROGRESS_FD_ environment variables.
 
 Invoking Commands
 -----------------
 
-The *-c* option causes *streampager* to invoke the specified command, and capture
+The *-c* option causes *sp* to invoke the specified command, and capture
 its standard output and standard error streams as separate streams.
 
 For example:
@@ -125,8 +141,8 @@ separately from the main output.
 The *-c* option can be specified multiple times to run multiple commands
 and page all of their outputs as separate streams.
 
-If *streampager* is invoked as *spp* then it runs the rest of its command line
-arguments as a single command.  For example:
+The companion program *spp* runs the rest of its command line arguments as a
+single command (without invoking the shell).  For example:
 
     spp grep -r foo /path
 

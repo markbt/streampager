@@ -53,17 +53,21 @@ enum FileSpec {
 fn open_files(args: ArgMatches) -> Result<(), Error> {
     let mut pager = Pager::new_using_system_terminal()?;
     let mode = {
-        let delayed = args
-            .value_of("delayed")
-            .map(|ms| ms.parse::<u64>())
-            .transpose()?;
-        let alternate = !args.is_present("no_alternate");
-        match (alternate, delayed) {
-            (_, Some(0)) => InterfaceMode::FullScreen,
-            (true, None) => InterfaceMode::Delayed(Duration::from_secs(2)),
-            (true, Some(ms)) => InterfaceMode::Delayed(Duration::from_secs(ms)),
-            (false, None) => InterfaceMode::Hybrid,
-            (false, Some(_)) => bail!("--delayed and --no-alternate cannot be use together"),
+        if args.is_present("no_alternate") {
+            InterfaceMode::Hybrid
+        } else {
+            let delayed = if args.is_present("fullscreen") {
+                Some(0)
+            } else {
+                args.value_of("delayed")
+                    .map(|ms| ms.parse::<u64>())
+                    .transpose()?
+            };
+            match delayed {
+                Some(0) => InterfaceMode::FullScreen,
+                None => InterfaceMode::Delayed(Duration::from_secs(2)),
+                Some(ms) => InterfaceMode::Delayed(Duration::from_secs(ms)),
+            }
         }
     };
     pager.set_interface_mode(mode);

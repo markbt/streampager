@@ -1,6 +1,6 @@
 //! Prompts for input.
 use anyhow::Error;
-use termwiz::cell::{CellAttributes, AttributeChange};
+use termwiz::cell::{AttributeChange, CellAttributes};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;

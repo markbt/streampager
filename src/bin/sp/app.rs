@@ -20,16 +20,25 @@ pub(crate) fn app() -> App<'static, 'static> {
                 .multiple(true),
         )
         .arg(
+            Arg::with_name("fullscreen")
+                .long("fullscreen")
+                .short("F")
+                .overrides_with_all(&["delayed", "no_alternate"])
+                .help("Enter full screen immediately")
+        )
+        .arg(
             Arg::with_name("delayed")
                 .long("delayed")
                 .short("D")
                 .value_name("SEC")
+                .overrides_with_all(&["fullscreen", "no_alternate"])
                 .help("Enter full screen after SEC seconds without waiting for content to fill one screen."),
         )
         .arg(
             Arg::with_name("no_alternate")
                 .long("no-alternate")
                 .short("X")
+                .overrides_with_all(&["fullscreen", "delayed"])
                 .help("Disables using the alternate screen. Enables streaming output before full screen."),
         );
     if cfg!(unix) {

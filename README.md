@@ -36,11 +36,12 @@ This behaviour can be customized:
 * The `-X` option prevents the initial buffering of input.  Instead, it will
   be displayed directly until either a full screen of input is received,
   or **`Space`** is pressed.
-* The `-D` option changes the delay from its default two seconds.  Use `-D0`
-  to disable the delay entirely, and immediately enter fullscreen mode.
+* The `-D` option changes the delay from its default two seconds.
+* The `-F` option disables the delay entirely, causing fullscreen mode to
+  be entered immediately.
 
-An animated indicator the bottom left of the screen indicates if the input pipe
-is still connected.
+An indicator at the bottom right of the screen shows if the input pipe
+is still connected, and whether new data is being loaded.
 
 *sp* can also be used to display files by providing their file names as command
 line arguments.
