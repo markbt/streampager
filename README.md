@@ -129,9 +129,6 @@ is equivalent to the previous example.
 
 * [ ] Toggle line wrapping (Key: **`\`**)
 * [ ] Search history and go-to-line history.
-* [ ] Handle non-printable characters in prompt input.
-* [ ] Wrapping searches and searching backwards.
-* [ ] Following the end of files on disk (like `tail -f`).
 * [ ] Line ending detection and handling (display `<CR>` in files with mixed line
   endings).
 * [ ] Support composing character sequences (e.g. "لآ")
