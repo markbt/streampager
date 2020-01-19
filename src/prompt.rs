@@ -112,8 +112,12 @@ impl Prompt {
         width: usize,
     ) -> Result<Option<Action>, Error> {
         use termwiz::input::{KeyCode::*, Modifiers};
+        const CTRL: Modifiers = Modifiers::CTRL;
+        const NONE: Modifiers = Modifiers::NONE;
+        const ALT: Modifiers = Modifiers::ALT;
         match (key.modifiers, key.key) {
-            (Modifiers::NONE, Enter) => {
+            (NONE, Enter) | (CTRL, Char('J')) | (CTRL, Char('M')) => {
+                // Finish.
                 let mut run = self.run.take();
                 let value: String = self.value[..].iter().collect();
                 return Ok(Some(Action::Run(Box::new(move |screen: &mut Screen| {
@@ -125,13 +129,15 @@ impl Prompt {
                     }
                 }))));
             }
-            (Modifiers::NONE, Escape) => {
+            (NONE, Escape) => {
+                // Cancel.
                 return Ok(Some(Action::Run(Box::new(|screen: &mut Screen| {
                     screen.clear_prompt();
                     Ok(Some(Action::Render))
                 }))));
             }
-            (Modifiers::NONE, Char(c)) => {
+            (NONE, Char(c)) => {
+                // Insert a character.
                 self.value.insert(self.position, c);
                 self.position += 1;
                 if self.position == self.value.len() && self.cursor_position() < width - 5 {
@@ -141,7 +147,8 @@ impl Prompt {
                     return Ok(Some(Action::RefreshPrompt));
                 }
             }
-            (Modifiers::NONE, Backspace) => {
+            (NONE, Backspace) | (CTRL, Char('H')) => {
+                // Delete character to left.
                 if self.position > 0 {
                     self.value.remove(self.position - 1);
                     self.position -= 1;
@@ -149,14 +156,35 @@ impl Prompt {
                     return Ok(Some(Action::RefreshPrompt));
                 }
             }
-            (Modifiers::NONE, Delete) => {
+            (NONE, Delete) | (CTRL, Char('D')) => {
+                // Delete character to right.
                 if self.position < self.value.len() {
                     self.value.remove(self.position);
                     self.clamp_offset(width);
                     return Ok(Some(Action::RefreshPrompt));
                 }
             }
-            (Modifiers::NONE, RightArrow) => {
+            (CTRL, Char('W')) | (ALT, Backspace) => {
+                // Delete previous word.
+                let dest = move_word_backwards(&self.value, self.position);
+                if dest != self.position {
+                    self.value.splice(dest..self.position, None);
+                    self.position = dest;
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
+            }
+            (ALT, Char('d')) => {
+                // Delete next word.
+                let dest = move_word_forwards(&self.value, self.position);
+                if dest != self.position {
+                    self.value.splice(self.position..dest, None);
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
+            }
+            (NONE, RightArrow) | (CTRL, Char('F')) => {
+                // Move right one character.
                 if self.position < self.value.len() {
                     self.position += 1;
                     while self.position < self.value.len() {
@@ -170,7 +198,8 @@ impl Prompt {
                     return Ok(Some(Action::RefreshPrompt));
                 }
             }
-            (Modifiers::NONE, LeftArrow) => {
+            (NONE, LeftArrow) | (CTRL, Char('B')) => {
+                // Move left one character.
                 if self.position > 0 {
                     while self.position > 0 {
                         self.position -= 1;
@@ -183,15 +212,63 @@ impl Prompt {
                     return Ok(Some(Action::RefreshPrompt));
                 }
             }
-            (Modifiers::NONE, End) | (Modifiers::CTRL, Char('E')) => {
+            (CTRL, RightArrow) | (ALT, Char('f')) => {
+                // Move right one word.
+                let dest = move_word_forwards(&self.value, self.position);
+                if dest != self.position {
+                    self.position = dest;
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
+            }
+            (CTRL, LeftArrow) | (ALT, Char('b')) => {
+                // Move left one word.
+                let dest = move_word_backwards(&self.value, self.position);
+                if dest != self.position {
+                    self.position = dest;
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
+            }
+            (CTRL, Char('K')) => {
+                // Delete to end of line.
+                if self.position < self.value.len() {
+                    self.value.splice(self.position.., None);
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
+            }
+            (CTRL, Char('U')) => {
+                // Delete to start of line.
+                if self.position> 0 {
+                    self.value.splice(..self.position, None);
+                    self.position = 0;
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
+            }
+            (NONE, End) | (CTRL, Char('E')) => {
+                // Move to end of line.
                 self.position = self.value.len();
                 self.clamp_offset(width);
                 return Ok(Some(Action::RefreshPrompt));
             }
-            (Modifiers::NONE, Home) | (Modifiers::CTRL, Char('A')) => {
+            (NONE, Home) | (CTRL, Char('A')) => {
+                // Move to beginning of line.
                 self.position = 0;
                 self.clamp_offset(width);
                 return Ok(Some(Action::RefreshPrompt));
+            }
+            (CTRL, Char('T')) => {
+                // Transpose characters.
+                if self.position > 0 && self.value.len() > 1 {
+                    if self.position < self.value.len() {
+                        self.position += 1;
+                    }
+                    self.value.swap(self.position - 2, self.position - 1);
+                    self.clamp_offset(width);
+                    return Ok(Some(Action::RefreshPrompt));
+                }
             }
             _ => {}
         }
@@ -207,4 +284,32 @@ impl Prompt {
         self.clamp_offset(width);
         Ok(Some(Action::RefreshPrompt))
     }
+}
+
+fn move_word_forwards(value: &Vec<char>, mut position: usize) -> usize {
+    let len = value.len();
+    while position < len && value[position].is_whitespace() {
+        position += 1;
+    }
+    while position < len && !value[position].is_whitespace() {
+        position += 1;
+    }
+    position
+}
+
+fn move_word_backwards(value: &Vec<char>, mut position: usize) -> usize {
+    while position > 0 {
+        position -= 1;
+        if !value[position].is_whitespace() {
+            break;
+        }
+    }
+    while position > 0 {
+        if value[position].is_whitespace() {
+            position += 1;
+            break;
+        }
+        position -= 1;
+    }
+    position
 }
