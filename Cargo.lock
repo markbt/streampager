@@ -1018,7 +1018,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "streampager"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "anyhow 1.0.26 (registry+https://github.com/rust-lang/crates.io-index)",
  "bit-set 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
