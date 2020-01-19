@@ -13,6 +13,7 @@ use vec_map::VecMap;
 
 mod bar;
 mod buffer;
+mod buffer_cache;
 mod command;
 pub mod config;
 mod direct;
@@ -131,7 +132,7 @@ impl Pager {
     pub fn add_output_file(&mut self, filename: &OsStr) -> Result<&mut Self> {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let file = File::new_mapped(index, filename, event_sender)?;
+        let file = File::new_file(index, filename, event_sender)?;
         self.files.push(file);
         Ok(self)
     }

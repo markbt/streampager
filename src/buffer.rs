@@ -59,6 +59,11 @@ impl Buffer {
         let data = unsafe { &*self.mmap.get() };
         &data[..end]
     }
+
+    /// Returns the size of the readable portion of the buffer
+    pub(crate) fn available(&self) -> usize {
+        self.filled.load(Ordering::SeqCst)
+    }
 }
 
 impl<'buffer> BufferWrite<'buffer> {

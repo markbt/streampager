@@ -17,6 +17,10 @@ pub(crate) enum Event {
     Input(InputEvent),
     /// A file has finished loading.
     Loaded(usize),
+    /// A file has started loading more data.
+    Appending(usize),
+    /// A file has started reloading.
+    Reloading(usize),
     /// Render an update to the screen.
     Render,
     /// Refresh the whole screen.

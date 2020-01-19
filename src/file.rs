@@ -1,21 +1,30 @@
 //! Files.
 use anyhow::{Context, Error};
 use memmap::Mmap;
+use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use std::borrow::Cow;
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::ffi::OsStr;
+use std::fs::File as StdFile;
 use std::io::{Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
+use std::time::Duration;
 
 use crate::buffer::Buffer;
-use crate::event::{Event, EventSender};
+use crate::buffer_cache::BufferCache;
+use crate::event::{Event, EventSender, UniqueInstance};
 
 /// Buffer size to use when loading and parsing files.  This is also the block
-/// size when parsing memory mapped files.
+/// size when parsing memory mapped files or caching files read from disk.
 const BUFFER_SIZE: usize = 1024 * 1024;
+
+/// Size of the file cache in buffers.
+const CACHE_SIZE: usize = 16;
 
 /// The data content of the file.
 #[derive(Clone)]
@@ -23,6 +32,13 @@ enum FileData {
     /// Data content is being streamed from an input stream, and stored in a
     /// vector of buffers.
     Streamed { buffers: Arc<RwLock<Vec<Buffer>>> },
+
+    /// Data content should be read from a file on disk.
+    File {
+        path: PathBuf,
+        buffer_cache: Arc<Mutex<BufferCache>>,
+        events: mpsc::Sender<FileEvent>,
+    },
 
     /// Data content has been memory mapped.
     Mapped { mmap: Arc<Mmap> },
@@ -51,6 +67,9 @@ struct FileMeta {
     /// The offset of each newline in the file.
     newlines: RwLock<Vec<usize>>,
 
+    /// During reload, the number of lines the file had before reloading.
+    reload_old_line_count: RwLock<Option<usize>>,
+
     /// Set to true when the file has been loaded and parsed.
     finished: AtomicBool,
 
@@ -67,6 +86,16 @@ struct FileMeta {
     waker_mutex: Mutex<()>,
 }
 
+/// Event triggered by changes to a file on disk.
+#[derive(Clone, Copy, Debug)]
+enum FileEvent {
+    /// File has been appended to.
+    Append,
+
+    /// File has changed and needs reloading.
+    Reload,
+}
+
 /// Default value for `needed_lines`.
 pub(crate) const DEFAULT_NEEDED_LINES: usize = 5000;
 
@@ -79,6 +108,7 @@ impl FileMeta {
             info: RwLock::new(Vec::new()),
             length: AtomicUsize::new(0usize),
             newlines: RwLock::new(Vec::new()),
+            reload_old_line_count: RwLock::new(None),
             finished: AtomicBool::new(false),
             error: RwLock::new(None),
             needed_lines: AtomicUsize::new(DEFAULT_NEEDED_LINES),
@@ -155,6 +185,196 @@ impl FileData {
         Ok(FileData::Streamed { buffers })
     }
 
+    /// Create a new file from disk.
+    fn new_file<P: AsRef<Path>>(
+        path: P,
+        meta: Arc<FileMeta>,
+        event_sender: EventSender,
+    ) -> Result<FileData, Error> {
+        let path = path.as_ref();
+        let mut file = Some(StdFile::open(path)?);
+        let (events, event_rx) = mpsc::channel();
+        let appending = Arc::new(AtomicBool::new(false));
+        let buffer_cache = Arc::new(Mutex::new(BufferCache::new(path, BUFFER_SIZE, CACHE_SIZE)));
+
+        // Create a thread to watch for file change notifications.
+        thread::spawn({
+            let events = events.clone();
+            let appending = appending.clone();
+            let path = path.to_path_buf();
+            move || {
+                loop {
+                    let (tx, rx) = mpsc::channel();
+                    let mut watcher: RecommendedWatcher =
+                        Watcher::new(tx, Duration::from_millis(500)).expect("create watcher");
+                    watcher
+                        .watch(path.clone(), RecursiveMode::NonRecursive)
+                        .expect("watch file");
+                    loop {
+                        let event = rx.recv();
+                        match event {
+                            Ok(DebouncedEvent::NoticeWrite(_)) => {
+                                appending.store(true, Ordering::SeqCst);
+                                let _ = events.send(FileEvent::Append);
+                            }
+                            Ok(DebouncedEvent::Write(_)) => {
+                                appending.store(false, Ordering::SeqCst);
+                                let _ = events.send(FileEvent::Append);
+                            }
+                            Ok(DebouncedEvent::Create(_)) => {
+                                let _ = events.send(FileEvent::Append);
+                            }
+                            Ok(DebouncedEvent::Rename(_, _)) => {
+                                let _ = events.send(FileEvent::Reload);
+                            }
+                            Ok(DebouncedEvent::NoticeRemove(_)) | Ok(DebouncedEvent::Chmod(_)) => {
+                                let _ = events.send(FileEvent::Reload);
+                                break;
+                            }
+                            Err(_) => {
+                                // The watcher failed for some reason.
+                                // Wait before retrying.
+                                thread::sleep(Duration::from_secs(1));
+                                break;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        });
+
+        // Create a thread to load the file.
+        thread::spawn({
+            let buffer_cache = buffer_cache.clone();
+            let path = path.to_path_buf();
+            move || {
+                let loaded_instance = UniqueInstance::new();
+                let appending_instance = UniqueInstance::new();
+                let reloading_instance = UniqueInstance::new();
+                let mut total_length = 0;
+                let mut end_data = Vec::new();
+                loop {
+                    meta.length.store(total_length, Ordering::SeqCst);
+                    if let Some(mut file) = file.take() {
+                        let mut buffer = Vec::new();
+                        buffer.resize(BUFFER_SIZE, 0);
+                        loop {
+                            match file.read(buffer.as_mut_slice()) {
+                                Ok(0) => break,
+                                Ok(len) => {
+                                    let mut newlines = meta.newlines.write().unwrap();
+                                    for i in 0..len {
+                                        if buffer[i] == b'\n' {
+                                            newlines.push(total_length + i);
+                                        }
+                                    }
+                                    total_length += len;
+                                    meta.length.store(total_length, Ordering::SeqCst);
+                                }
+                                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                                Err(e) => {
+                                    let mut error = meta.error.write().unwrap();
+                                    *error = Some(e.into());
+                                }
+                            }
+                        }
+
+                        // Attempt to read the last 4k of the file.  If the file changes, we will
+                        // check this portion of the file to see if we need to reload the file.
+                        let end_len = total_length.min(4096);
+                        end_data.clear();
+                        if file.seek(SeekFrom::End(-(end_len as i64))).is_ok() {
+                            end_data.resize(end_len, 0);
+                            if let Ok(len) = file.read(end_data.as_mut_slice()) {
+                                if len != end_len {
+                                    end_data.clear();
+                                }
+                            } else {
+                                end_data.clear();
+                            }
+                        }
+                    }
+                    let (send_event, mut reload) = if appending.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(100));
+                        (false, end_data.is_empty())
+                    } else {
+                        meta.finished.store(true, Ordering::SeqCst);
+                        event_sender
+                            .send_unique(Event::Loaded(meta.index), &loaded_instance)
+                            .unwrap();
+                        {
+                            let mut reload_old_line_count =
+                                meta.reload_old_line_count.write().unwrap();
+                            *reload_old_line_count = None;
+                        }
+                        match event_rx.recv() {
+                            Ok(FileEvent::Append) => (true, end_data.is_empty()),
+                            Ok(FileEvent::Reload) => (true, true),
+                            Err(e) => {
+                                let mut error = meta.error.write().unwrap();
+                                *error = Some(e.into());
+                                return;
+                            }
+                        }
+                    };
+                    match StdFile::open(&path) {
+                        Ok(mut f) => {
+                            if !reload {
+                                let mut new_data = Vec::new();
+                                new_data.resize(end_data.len(), 0);
+                                let offset = total_length - end_data.len();
+                                if f.seek(SeekFrom::Start(offset as u64)).is_ok()
+                                    && f.read(new_data.as_mut_slice()).ok() == Some(end_data.len())
+                                    && new_data == end_data
+                                {
+                                    // We can continue where we left off
+                                } else {
+                                    reload = true;
+                                }
+                            }
+                            file = Some(f);
+                        }
+                        Err(_) => {
+                            reload = true;
+                        }
+                    }
+                    if reload {
+                        buffer_cache.lock().unwrap().clear();
+                        let mut reload_old_line_count = meta.reload_old_line_count.write().unwrap();
+                        let mut newlines = meta.newlines.write().unwrap();
+                        let count = max(
+                            reload_old_line_count.unwrap_or(0),
+                            line_count(&*newlines, total_length),
+                        );
+                        *reload_old_line_count = Some(count);
+                        newlines.clear();
+                        total_length = 0;
+                        if send_event {
+                            event_sender
+                                .send_unique(Event::Reloading(meta.index), &reloading_instance)
+                                .unwrap();
+                        }
+                    } else {
+                        if send_event {
+                            event_sender
+                                .send_unique(Event::Appending(meta.index), &appending_instance)
+                                .unwrap();
+                        }
+                    }
+                    meta.finished.store(false, Ordering::SeqCst);
+                }
+            }
+        });
+
+        let path = path.to_path_buf();
+        Ok(FileData::File {
+            path,
+            buffer_cache,
+            events,
+        })
+    }
+
     /// Create a new memory mapped file.
     ///
     /// The `file` is memory mapped and then a background thread is started to
@@ -163,7 +383,7 @@ impl FileData {
     ///
     /// Returns `FileData` containing the memory map.
     fn new_mapped(
-        file: std::fs::File,
+        file: StdFile,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
     ) -> Result<FileData, Error> {
@@ -256,6 +476,25 @@ impl FileData {
                     call(Cow::Owned(v))
                 }
             }
+            FileData::File {
+                path: _,
+                events,
+                buffer_cache,
+            } => {
+                let mut buffer_cache = buffer_cache.lock().unwrap();
+                buffer_cache
+                    .with_slice(start, end, |data| {
+                        if data
+                            .iter()
+                            .take(data.len().saturating_sub(1))
+                            .any(|c| *c == b'\n')
+                        {
+                            events.send(FileEvent::Reload).unwrap();
+                        }
+                        call(data)
+                    })
+                    .unwrap()
+            }
             FileData::Mapped { mmap } => call(Cow::Borrowed(&mmap[start..end])),
             FileData::Empty => call(Cow::Borrowed(&[])),
             FileData::Static { data } => call(Cow::Borrowed(&data[start..end])),
@@ -286,7 +525,26 @@ impl File {
         Ok(File { data, meta })
     }
 
+    pub(crate) fn new_file(
+        index: usize,
+        filename: &OsStr,
+        event_sender: EventSender,
+    ) -> Result<File, Error> {
+        let title = filename.to_string_lossy().into_owned();
+        let meta = Arc::new(FileMeta::new(index, title.to_string()));
+        let mut file = StdFile::open(filename).context(title)?;
+        // Determine whether this file is a real file, or some kind of pipe, by
+        // attempting to do a no-op seek.  If it fails, we won't be able to seek
+        // around and load parts of the file at will, so treat it as a stream.
+        let data = match file.seek(SeekFrom::Current(0)) {
+            Ok(_) => FileData::new_file(filename, meta.clone(), event_sender)?,
+            Err(_) => FileData::new_streamed(file, meta.clone(), event_sender)?,
+        };
+        Ok(File { data, meta })
+    }
+
     /// Load a file by memory mapping it if possible.
+    #[allow(unused)]
     pub(crate) fn new_mapped(
         index: usize,
         filename: &OsStr,
@@ -294,7 +552,7 @@ impl File {
     ) -> Result<File, Error> {
         let title = filename.to_string_lossy().into_owned();
         let meta = Arc::new(FileMeta::new(index, title.clone()));
-        let mut file = std::fs::File::open(filename).context(title)?;
+        let mut file = StdFile::open(filename).context(title)?;
         // Determine whether this file is a real file, or some kind of pipe, by
         // attempting to do a no-op seek.  If it fails, assume we can't mmap
         // it.
@@ -382,29 +640,16 @@ impl File {
 
     /// Returns the number of lines in the file.
     pub(crate) fn lines(&self) -> usize {
+        let mut lines = 0;
+        if !self.meta.finished.load(Ordering::SeqCst) {
+            let reload_old_line_count = self.meta.reload_old_line_count.read().unwrap();
+            lines = reload_old_line_count.unwrap_or(0);
+        }
         let newlines = self.meta.newlines.read().unwrap();
-        let mut lines = newlines.len();
-        let after_last_newline_offset = if lines == 0 {
-            0
-        } else {
-            newlines[lines - 1] + 1
-        };
-        if self.meta.length.load(Ordering::SeqCst) > after_last_newline_offset {
-            lines += 1;
-        }
-        lines
-    }
-
-    /// Returns the maximum width in characters of line numbers for this file.
-    pub(crate) fn line_number_width(&self) -> usize {
-        let lines = self.lines();
-        let mut lw = 1;
-        let mut ll = 10;
-        while ll <= lines {
-            ll *= 10;
-            lw += 1;
-        }
-        lw
+        max(
+            lines,
+            line_count(&*newlines, self.meta.length.load(Ordering::SeqCst)),
+        )
     }
 
     /// Runs the `call` function, passing it the contents of line `index`.
@@ -452,4 +697,17 @@ impl File {
     pub(crate) fn paused(&self) -> bool {
         !self.loaded() && self.meta.waker_mutex.try_lock().is_ok()
     }
+}
+
+fn line_count(newlines: &Vec<usize>, length: usize) -> usize {
+    let mut lines = newlines.len();
+    let after_last_newline_offset = if lines == 0 {
+        0
+    } else {
+        newlines[lines - 1] + 1
+    };
+    if length > after_last_newline_offset {
+        lines += 1;
+    }
+    lines
 }
