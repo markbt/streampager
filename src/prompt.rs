@@ -17,6 +17,14 @@ pub(crate) struct Prompt {
     /// The text of the prompt to display to the user.
     prompt: String,
 
+    /// The current prompt state,
+    state: PromptState,
+
+    /// The closure to run when the user presses Return.  Will only be called once.
+    run: Option<Box<PromptRunFn>>,
+}
+
+pub(crate) struct PromptState {
     /// The value the user is typing in.
     value: Vec<char>,
 
@@ -25,21 +33,24 @@ pub(crate) struct Prompt {
 
     /// The cursor position within the value.
     position: usize,
-
-    /// The closure to run when the user presses Return.  Will only be called once.
-    run: Option<Box<PromptRunFn>>,
 }
 
-impl Prompt {
-    /// Create a new prompt.
-    pub(crate) fn new(prompt: &str, run: Box<PromptRunFn>) -> Prompt {
-        Prompt {
-            prompt: prompt.to_string(),
+impl PromptState {
+    pub(crate) fn new() -> PromptState {
+        PromptState {
             value: Vec::new(),
             offset: 0,
             position: 0,
-            run: Some(run),
         }
+    }
+
+    /// Returns the column for the cursor.
+    pub(crate) fn cursor_position(&self) -> usize {
+        let mut position = 0;
+        for c in self.value[self.offset..self.position].iter() {
+            position += c.width().unwrap_or(0);
+        }
+        position
     }
 
     /// Clamp the offset to values appropriate for the length of the value and
@@ -49,8 +60,7 @@ impl Prompt {
         if self.offset > self.position {
             self.offset = self.position;
         }
-        let prompt_width = self.prompt.width() + 4;
-        while self.cursor_position() < prompt_width + 5 && self.offset > 0 {
+        while self.cursor_position() < 5 && self.offset > 0 {
             self.offset -= 1;
         }
         while self.cursor_position() > width - 5 && self.offset < self.position {
@@ -58,13 +68,207 @@ impl Prompt {
         }
     }
 
+    /// Renders the prompt onto the terminal.
+    fn render(
+        &mut self,
+        changes: &mut Vec<Change>,
+        mut position: usize,
+        width: usize,
+    ) -> Result<(), Error> {
+        let start = self.offset;
+        let mut end = self.offset;
+        while end < self.value.len() {
+            position += self.value[end].width().unwrap_or(0);
+            if position > width {
+                break;
+            }
+            end += 1;
+        }
+        let value: String = self.value[start..end].iter().collect();
+        changes.push(Change::Text(value));
+        if position < width {
+            changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+        }
+        Ok(())
+    }
+
+    /// Insert a character at the current position.
+    fn insert_char(&mut self, c: char, width: usize) -> Option<Action> {
+        self.value.insert(self.position, c);
+        self.position += 1;
+        if self.position == self.value.len() && self.cursor_position() < width - 5 {
+            Some(Action::Change(Change::Text(c.to_string())))
+        } else {
+            Some(Action::RefreshPrompt)
+        }
+    }
+
+    fn insert_str(&mut self, s: &str) -> Option<Action> {
+        let old_len = self.value.len();
+        self.value.splice(self.position..self.position, s.chars());
+        self.position += self.value.len() - old_len;
+        Some(Action::RefreshPrompt)
+    }
+
+    /// Delete previous character.
+    fn delete_prev_char(&mut self) -> Option<Action> {
+        if self.position > 0 {
+            self.value.remove(self.position - 1);
+            self.position -= 1;
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Delete next character.
+    fn delete_next_char(&mut self) -> Option<Action> {
+        if self.position < self.value.len() {
+            self.value.remove(self.position);
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Delete previous word.
+    fn delete_prev_word(&mut self) -> Option<Action> {
+        let dest = move_word_backwards(&self.value, self.position);
+        if dest != self.position {
+            self.value.splice(dest..self.position, None);
+            self.position = dest;
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Delete next word.
+    fn delete_next_word(&mut self) -> Option<Action> {
+        let dest = move_word_forwards(&self.value, self.position);
+        if dest != self.position {
+            self.value.splice(self.position..dest, None);
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Move right one character.
+    fn move_next_char(&mut self) -> Option<Action> {
+        if self.position < self.value.len() {
+            self.position += 1;
+            while self.position < self.value.len() {
+                let w = self.value[self.position].width().unwrap_or(0);
+                if w != 0 {
+                    break;
+                }
+                self.position += 1;
+            }
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Move left one character.
+    fn move_prev_char(&mut self) -> Option<Action> {
+        if self.position > 0 {
+            while self.position > 0 {
+                self.position -= 1;
+                let w = self.value[self.position].width().unwrap_or(0);
+                if w != 0 {
+                    break;
+                }
+            }
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Move right one word.
+    fn move_next_word(&mut self) -> Option<Action> {
+        let dest = move_word_forwards(&self.value, self.position);
+        if dest != self.position {
+            self.position = dest;
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Move left one word.
+    fn move_prev_word(&mut self) -> Option<Action> {
+        let dest = move_word_backwards(&self.value, self.position);
+        if dest != self.position {
+            self.position = dest;
+            return Some(Action::RefreshPrompt);
+        } else {
+            None
+        }
+    }
+
+    /// Delete to end of line.
+    fn delete_to_end(&mut self) -> Option<Action> {
+        if self.position < self.value.len() {
+            self.value.splice(self.position.., None);
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Delete to start of line.
+    fn delete_to_start(&mut self) -> Option<Action> {
+        if self.position > 0 {
+            self.value.splice(..self.position, None);
+            self.position = 0;
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+
+    /// Move to end of line.
+    fn move_to_end(&mut self) -> Option<Action> {
+        self.position = self.value.len();
+        Some(Action::RefreshPrompt)
+    }
+
+    /// Move to beginning of line.
+    fn move_to_start(&mut self) -> Option<Action> {
+        self.position = 0;
+        Some(Action::RefreshPrompt)
+    }
+
+    /// Transpose characters.
+    fn transpose_chars(&mut self) -> Option<Action> {
+        if self.position > 0 && self.value.len() > 1 {
+            if self.position < self.value.len() {
+                self.position += 1;
+            }
+            self.value.swap(self.position - 2, self.position - 1);
+            Some(Action::RefreshPrompt)
+        } else {
+            None
+        }
+    }
+}
+
+impl Prompt {
+    /// Create a new prompt.
+    pub(crate) fn new(prompt: &str, run: Box<PromptRunFn>) -> Prompt {
+        Prompt {
+            prompt: prompt.to_string(),
+            state: PromptState::new(),
+            run: Some(run),
+        }
+    }
+
     /// Returns the column for the cursor.
     pub(crate) fn cursor_position(&self) -> usize {
-        let mut position = self.prompt.width() + 4;
-        for c in self.value[self.offset..self.position].iter() {
-            position += c.width().unwrap_or(0);
-        }
-        position
+        self.prompt.width() + 4 + self.state.cursor_position()
     }
 
     /// Renders the prompt onto the terminal.
@@ -74,17 +278,6 @@ impl Prompt {
         row: usize,
         width: usize,
     ) -> Result<(), Error> {
-        let start = self.offset;
-        let mut end = self.offset;
-        let mut position = self.prompt.width() + 3;
-        while end < self.value.len() {
-            position += self.value[end].width().unwrap_or(0);
-            if position > width {
-                break;
-            }
-            end += 1;
-        }
-        let value: String = self.value[start..end].iter().collect();
         changes.push(Change::CursorPosition {
             x: Position::Absolute(0),
             y: Position::Absolute(row),
@@ -98,10 +291,7 @@ impl Prompt {
         changes.push(Change::Text(format!("  {} ", self.prompt)));
         changes.push(Change::AllAttributes(CellAttributes::default()));
         changes.push(Change::Text(" ".into()));
-        changes.push(Change::Text(value));
-        if position < width {
-            changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
-        }
+        self.state.render(changes, self.prompt.width() + 4, width)?;
         Ok(())
     }
 
@@ -115,11 +305,12 @@ impl Prompt {
         const CTRL: Modifiers = Modifiers::CTRL;
         const NONE: Modifiers = Modifiers::NONE;
         const ALT: Modifiers = Modifiers::ALT;
-        match (key.modifiers, key.key) {
+        let value_width = width - self.prompt.width() - 4;
+        let action = match (key.modifiers, key.key) {
             (NONE, Enter) | (CTRL, Char('J')) | (CTRL, Char('M')) => {
                 // Finish.
                 let mut run = self.run.take();
-                let value: String = self.value[..].iter().collect();
+                let value: String = self.state.value[..].iter().collect();
                 return Ok(Some(Action::Run(Box::new(move |screen: &mut Screen| {
                     screen.clear_prompt();
                     if let Some(ref mut run) = run {
@@ -136,153 +327,32 @@ impl Prompt {
                     Ok(Some(Action::Render))
                 }))));
             }
-            (NONE, Char(c)) => {
-                // Insert a character.
-                self.value.insert(self.position, c);
-                self.position += 1;
-                if self.position == self.value.len() && self.cursor_position() < width - 5 {
-                    return Ok(Some(Action::Change(Change::Text(c.to_string()))));
-                } else {
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (NONE, Backspace) | (CTRL, Char('H')) => {
-                // Delete character to left.
-                if self.position > 0 {
-                    self.value.remove(self.position - 1);
-                    self.position -= 1;
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (NONE, Delete) | (CTRL, Char('D')) => {
-                // Delete character to right.
-                if self.position < self.value.len() {
-                    self.value.remove(self.position);
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (CTRL, Char('W')) | (ALT, Backspace) => {
-                // Delete previous word.
-                let dest = move_word_backwards(&self.value, self.position);
-                if dest != self.position {
-                    self.value.splice(dest..self.position, None);
-                    self.position = dest;
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (ALT, Char('d')) => {
-                // Delete next word.
-                let dest = move_word_forwards(&self.value, self.position);
-                if dest != self.position {
-                    self.value.splice(self.position..dest, None);
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (NONE, RightArrow) | (CTRL, Char('F')) => {
-                // Move right one character.
-                if self.position < self.value.len() {
-                    self.position += 1;
-                    while self.position < self.value.len() {
-                        let w = self.value[self.position].width().unwrap_or(0);
-                        if w != 0 {
-                            break;
-                        }
-                        self.position += 1;
-                    }
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (NONE, LeftArrow) | (CTRL, Char('B')) => {
-                // Move left one character.
-                if self.position > 0 {
-                    while self.position > 0 {
-                        self.position -= 1;
-                        let w = self.value[self.position].width().unwrap_or(0);
-                        if w != 0 {
-                            break;
-                        }
-                    }
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (CTRL, RightArrow) | (ALT, Char('f')) => {
-                // Move right one word.
-                let dest = move_word_forwards(&self.value, self.position);
-                if dest != self.position {
-                    self.position = dest;
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (CTRL, LeftArrow) | (ALT, Char('b')) => {
-                // Move left one word.
-                let dest = move_word_backwards(&self.value, self.position);
-                if dest != self.position {
-                    self.position = dest;
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (CTRL, Char('K')) => {
-                // Delete to end of line.
-                if self.position < self.value.len() {
-                    self.value.splice(self.position.., None);
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (CTRL, Char('U')) => {
-                // Delete to start of line.
-                if self.position> 0 {
-                    self.value.splice(..self.position, None);
-                    self.position = 0;
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            (NONE, End) | (CTRL, Char('E')) => {
-                // Move to end of line.
-                self.position = self.value.len();
-                self.clamp_offset(width);
-                return Ok(Some(Action::RefreshPrompt));
-            }
-            (NONE, Home) | (CTRL, Char('A')) => {
-                // Move to beginning of line.
-                self.position = 0;
-                self.clamp_offset(width);
-                return Ok(Some(Action::RefreshPrompt));
-            }
-            (CTRL, Char('T')) => {
-                // Transpose characters.
-                if self.position > 0 && self.value.len() > 1 {
-                    if self.position < self.value.len() {
-                        self.position += 1;
-                    }
-                    self.value.swap(self.position - 2, self.position - 1);
-                    self.clamp_offset(width);
-                    return Ok(Some(Action::RefreshPrompt));
-                }
-            }
-            _ => {}
-        }
-        Ok(None)
+            (NONE, Char(c)) => self.state.insert_char(c, value_width),
+            (NONE, Backspace) | (CTRL, Char('H')) => self.state.delete_prev_char(),
+            (NONE, Delete) | (CTRL, Char('D')) => self.state.delete_next_char(),
+            (CTRL, Char('W')) | (ALT, Backspace) => self.state.delete_prev_word(),
+            (ALT, Char('d')) => self.state.delete_next_word(),
+            (NONE, RightArrow) | (CTRL, Char('F')) => self.state.move_next_char(),
+            (NONE, LeftArrow) | (CTRL, Char('B')) => self.state.move_prev_char(),
+            (CTRL, RightArrow) | (ALT, Char('f')) => self.state.move_next_word(),
+            (CTRL, LeftArrow) | (ALT, Char('b')) => self.state.move_prev_word(),
+            (CTRL, Char('K')) => self.state.delete_to_end(),
+            (CTRL, Char('U')) => self.state.delete_to_start(),
+            (NONE, End) | (CTRL, Char('E')) => self.state.move_to_end(),
+            (NONE, Home) | (CTRL, Char('A')) => self.state.move_to_start(),
+            (CTRL, Char('T')) => self.state.transpose_chars(),
+            _ => return Ok(None),
+        };
+        self.state.clamp_offset(value_width);
+        Ok(action)
     }
 
     /// Paste some text into the prompt.
     pub(crate) fn paste(&mut self, text: &str, width: usize) -> Result<Option<Action>, Error> {
-        let old_len = self.value.len();
-        self.value
-            .splice(self.position..self.position, text.chars());
-        self.position += self.value.len() - old_len;
-        self.clamp_offset(width);
-        Ok(Some(Action::RefreshPrompt))
+        let value_width = width - self.prompt.width() - 4;
+        let action = self.state.insert_str(text);
+        self.state.clamp_offset(value_width);
+        Ok(action)
     }
 }
 
