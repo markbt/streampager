@@ -1,6 +1,6 @@
 //! Prompts for input.
 use anyhow::Error;
-use termwiz::cell::CellAttributes;
+use termwiz::cell::{CellAttributes, AttributeChange};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;
@@ -9,6 +9,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::display::Action;
 use crate::screen::Screen;
+use crate::util;
 
 type PromptRunFn = dyn FnMut(&mut Screen, &str) -> Result<Option<Action>, Error>;
 
@@ -48,7 +49,7 @@ impl PromptState {
     pub(crate) fn cursor_position(&self) -> usize {
         let mut position = 0;
         for c in self.value[self.offset..self.position].iter() {
-            position += c.width().unwrap_or(0);
+            position += render_width(*c);
         }
         position
     }
@@ -75,17 +76,39 @@ impl PromptState {
         mut position: usize,
         width: usize,
     ) -> Result<(), Error> {
-        let start = self.offset;
+        let mut start = self.offset;
         let mut end = self.offset;
         while end < self.value.len() {
-            position += self.value[end].width().unwrap_or(0);
-            if position > width {
-                break;
+            let c = self.value[end];
+            if let Some(render) = special_render(self.value[end]) {
+                if end > start {
+                    let value: String = self.value[start..end].iter().collect();
+                    changes.push(Change::Text(value));
+                }
+                let render = util::truncate_string(render, 0, width - position);
+                position += render.width();
+                changes.push(Change::Attribute(AttributeChange::Reverse(true)));
+                changes.push(Change::Text(render));
+                changes.push(Change::Attribute(AttributeChange::Reverse(false)));
+                start = end + 1;
+                // Control characters can't compose, so stop if we hit the end.
+                if position >= width {
+                    break;
+                }
+            } else {
+                let w = c.width().unwrap_or(0);
+                if position + w > width {
+                    // This character would take us past the end, so stop.
+                    break;
+                }
+                position += w;
             }
             end += 1;
         }
-        let value: String = self.value[start..end].iter().collect();
-        changes.push(Change::Text(value));
+        if end > start {
+            let value: String = self.value[start..end].iter().collect();
+            changes.push(Change::Text(value));
+        }
         if position < width {
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
@@ -159,7 +182,7 @@ impl PromptState {
         if self.position < self.value.len() {
             self.position += 1;
             while self.position < self.value.len() {
-                let w = self.value[self.position].width().unwrap_or(0);
+                let w = render_width(self.value[self.position]);
                 if w != 0 {
                     break;
                 }
@@ -176,7 +199,7 @@ impl PromptState {
         if self.position > 0 {
             while self.position > 0 {
                 self.position -= 1;
-                let w = self.value[self.position].width().unwrap_or(0);
+                let w = render_width(self.value[self.position]);
                 if w != 0 {
                     break;
                 }
@@ -382,4 +405,29 @@ fn move_word_backwards(value: &Vec<char>, mut position: usize) -> usize {
         position -= 1;
     }
     position
+}
+
+/// Determine the rendering width for a character.
+fn render_width(c: char) -> usize {
+    if c < ' ' || c == '\x7F' {
+        // Render as <XX>
+        4
+    } else if let Some(w) = c.width() {
+        // Render as the character itself
+        w
+    } else {
+        // Render as <U+XXXX>
+        8
+    }
+}
+
+/// Determine the special rendering for a character, if any.
+fn special_render(c: char) -> Option<String> {
+    if c < ' ' || c == '\x7F' {
+        Some(format!("<{:02X}>", c as u8))
+    } else if c.width().is_none() {
+        Some(format!("<U+{:04X}>", c as u32))
+    } else {
+        None
+    }
 }
