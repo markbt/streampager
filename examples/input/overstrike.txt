@@ -1,0 +1,12 @@
+
+Overstrike
+==========
+
+Original teletypes, which functioned much like a typewriter, did not have
+features like bboolldd or u_n_d_e_r_l_i_n_e_ .  Instead, these were implemented by emitting
+the BBAACCKKSSPPAACCEE character and then overstriking either another copy of the
+character (for bboolldd) or the underscore character (for u_n_d_e_r_l_i_n_e_).  This gave
+the effect of bboolldd or u_n_d_e_r_l_i_n_e_d_ text.
+
+Amazingly, ddeeccaaddeess later, and this is still the mechanism that tools like
+'m_a_n_' use to render bold and underlined text.
