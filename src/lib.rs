@@ -22,6 +22,7 @@ mod event;
 mod file;
 mod line;
 mod line_cache;
+mod line_drawing;
 mod overstrike;
 mod progress;
 mod prompt;

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::escape::csi::{Sgr, CSI};
+use termwiz::escape::esc::{Esc, EscCode};
 use termwiz::escape::osc::OperatingSystemCommand;
 use termwiz::escape::parser::Parser;
 use termwiz::escape::Action;
@@ -15,6 +16,7 @@ use termwiz::surface::{change::Change, Position};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::line_drawing;
 use crate::overstrike;
 use crate::search::{trim_trailing_newline, ESCAPE_SEQUENCE};
 use crate::util;
@@ -46,6 +48,8 @@ enum OutputStyle {
 struct AttributeState {
     /// Current attributes for the file
     attrs: CellAttributes,
+    /// Whether DEC line drawing mode is currently enabled
+    line_drawing: bool,
     /// Whether the file's attributes have changed
     changed: bool,
     /// What the currently applied style is.
@@ -57,6 +61,7 @@ impl AttributeState {
     fn new() -> AttributeState {
         AttributeState {
             attrs: CellAttributes::default(),
+            line_drawing: false,
             changed: false,
             style: OutputStyle::File,
         }
@@ -158,6 +163,8 @@ enum Span {
     SgrSequence(SmallVec<[Sgr; 5]>),
     /// A hyperlink escape code.
     Hyperlink(Option<Arc<Hyperlink>>),
+    /// A DEC line drawing mode escape code.
+    LineDrawing(bool),
     /// Data that should be ignored.
     Ignore(SmallVec<[u8; 20]>),
     /// A tab control character.
@@ -209,11 +216,16 @@ impl Span {
     ) -> Result<usize, std::io::Error> {
         match *self {
             Span::Text(ref t) => {
+                let text = if attr_state.line_drawing {
+                    Cow::Owned(line_drawing::convert_line_drawing(t.as_str()))
+                } else {
+                    Cow::Borrowed(t.as_str())
+                };
                 position = write_truncated(
                     changes,
                     attr_state,
                     OutputStyle::File,
-                    t,
+                    text.as_ref(),
                     start,
                     end,
                     position,
@@ -225,7 +237,20 @@ impl Span {
                 } else {
                     OutputStyle::Match
                 };
-                position = write_truncated(changes, attr_state, style, t, start, end, position)?;
+                let text = if attr_state.line_drawing {
+                    Cow::Owned(line_drawing::convert_line_drawing(t.as_str()))
+                } else {
+                    Cow::Borrowed(t.as_str())
+                };
+                position = write_truncated(
+                    changes,
+                    attr_state,
+                    style,
+                    text.as_ref(),
+                    start,
+                    end,
+                    position,
+                )?;
             }
             Span::TAB => {
                 let tabchars = 8 - position % 8;
@@ -265,6 +290,7 @@ impl Span {
             }
             Span::SgrSequence(ref s) => attr_state.apply_sgr_sequence(s),
             Span::Hyperlink(ref l) => attr_state.apply_hyperlink(l),
+            Span::LineDrawing(e) => attr_state.line_drawing = e,
             _ => {}
         }
         Ok(position)
@@ -329,6 +355,13 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
                                 skip_to = Some(index + len);
                             }
                         }
+                        Some(Action::Esc(Esc::Code(code))) => match code {
+                            EscCode::DecLineDrawing | EscCode::AsciiCharacterSet => {
+                                span = Some(Span::LineDrawing(code == EscCode::DecLineDrawing));
+                                skip_to = Some(index + len);
+                            }
+                            _ => {}
+                        },
                         _ => {}
                     }
                 }

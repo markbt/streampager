@@ -1,0 +1,12 @@
+
+DEC Alternative Character Set (Line Drawing Mode)
+=================================================
+
+ RawText:   _`abcdefghijklmnopqrstuvwxyz{|}~
+ DEC ACS: (0  _`abcdefghijklmnopqrstuvwxyz{|}~ (B
+ Unicode:    ◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·
+
+ (0[34m     lqq x   lqq lqk qqk lwk lqk qqk lqk lqk lqq (B[0m
+ (0[35m     mqk tq  x   tqj lqu xxx x x lqu x x tqj x   (B[0m
+ (0[36m     qqj mqq x   mqq mqj xxx tqj mqj mqu mqq x   (B[0m
+ (0[32m                             x       qqj         (B[0m
