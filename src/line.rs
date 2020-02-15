@@ -194,11 +194,12 @@ fn write_truncated(
         if let Some(change) = attr_state.style(style)? {
             changes.push(change);
         }
-        let offset = start.saturating_sub(position);
+        let start = start.saturating_sub(position);
+        let end = end.saturating_sub(position);
         changes.push(Change::Text(util::truncate_string(
             text,
-            offset,
-            end - offset,
+            start,
+            end - start,
         )));
     }
     Ok(position + text_width)
