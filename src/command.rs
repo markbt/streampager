@@ -16,6 +16,7 @@ use crate::search::{Search, SearchKind};
 /// relative to the end of the file.
 pub(crate) fn goto() -> Prompt {
     Prompt::new(
+        "goto",
         "Go to line:",
         Box::new(
             |screen: &mut Screen, value: &str| -> Result<Option<Action>, Error> {
@@ -77,6 +78,7 @@ pub(crate) fn goto() -> Prompt {
 /// Prompts the user for text to search.
 pub(crate) fn search(kind: SearchKind, event_sender: EventSender) -> Prompt {
     Prompt::new(
+        "search",
         "Search:",
         Box::new(
             move |screen: &mut Screen, value: &str| -> Result<Option<Action>, Error> {

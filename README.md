@@ -128,7 +128,6 @@ is equivalent to the previous example.
 ## Things Left To Do
 
 * [ ] Toggle line wrapping (Key: **`\`**)
-* [ ] Search history and go-to-line history.
 * [ ] Line ending detection and handling (display `<CR>` in files with mixed line
   endings).
 * [ ] Support composing character sequences (e.g. "لآ")

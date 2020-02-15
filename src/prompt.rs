@@ -1,5 +1,7 @@
 //! Prompts for input.
 use anyhow::Error;
+use std::char;
+use std::fmt::Write;
 use termwiz::cell::{AttributeChange, CellAttributes};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
@@ -8,6 +10,7 @@ use termwiz::surface::Position;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::display::Action;
+use crate::prompt_history::PromptHistory;
 use crate::screen::Screen;
 use crate::util;
 
@@ -18,8 +21,8 @@ pub(crate) struct Prompt {
     /// The text of the prompt to display to the user.
     prompt: String,
 
-    /// The current prompt state,
-    state: PromptState,
+    /// The current prompt history,
+    history: PromptHistory,
 
     /// The closure to run when the user presses Return.  Will only be called once.
     run: Option<Box<PromptRunFn>>,
@@ -43,6 +46,51 @@ impl PromptState {
             offset: 0,
             position: 0,
         }
+    }
+
+    pub(crate) fn load(data: &str) -> PromptState {
+        let mut value = Vec::new();
+        let mut iter = data.chars();
+        while let Some(c) = iter.next() {
+            if c == '\\' {
+                if let Some(c) = iter.next() {
+                    if c == 'x' {
+                        if let (Some(c1), Some(c2)) = (iter.next(), iter.next()) {
+                            let hex: String = [c1, c2].iter().collect();
+                            if let Some(c) =
+                                u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32)
+                            {
+                                value.push(c);
+                            }
+                        }
+                    } else {
+                        value.push(c);
+                    }
+                }
+            } else {
+                value.push(c);
+            }
+        }
+        let position = value.len();
+        PromptState {
+            value,
+            offset: 0,
+            position,
+        }
+    }
+
+    pub(crate) fn save(&self) -> String {
+        let mut data = String::new();
+        for &c in self.value.iter() {
+            if c == '\\' {
+                data.push_str("\\\\");
+            } else if c < ' ' || c == '\x7f' {
+                write!(data, "\\x{:02X}", c as u8).expect("writes to strings can't fail")
+            } else {
+                data.push(c);
+            }
+        }
+        data
     }
 
     /// Returns the column for the cursor.
@@ -281,17 +329,25 @@ impl PromptState {
 
 impl Prompt {
     /// Create a new prompt.
-    pub(crate) fn new(prompt: &str, run: Box<PromptRunFn>) -> Prompt {
+    pub(crate) fn new(ident: impl Into<String>, prompt: &str, run: Box<PromptRunFn>) -> Prompt {
         Prompt {
             prompt: prompt.to_string(),
-            state: PromptState::new(),
+            history: PromptHistory::open(ident),
             run: Some(run),
         }
     }
 
+    fn state(&self) -> &PromptState {
+        self.history.state()
+    }
+
+    fn state_mut(&mut self) -> &mut PromptState {
+        self.history.state_mut()
+    }
+
     /// Returns the column for the cursor.
     pub(crate) fn cursor_position(&self) -> usize {
-        self.prompt.width() + 4 + self.state.cursor_position()
+        self.prompt.width() + 4 + self.state().cursor_position()
     }
 
     /// Renders the prompt onto the terminal.
@@ -314,7 +370,8 @@ impl Prompt {
         changes.push(Change::Text(format!("  {} ", self.prompt)));
         changes.push(Change::AllAttributes(CellAttributes::default()));
         changes.push(Change::Text(" ".into()));
-        self.state.render(changes, self.prompt.width() + 4, width)?;
+        let offset = self.prompt.width() + 4;
+        self.state_mut().render(changes, offset, width)?;
         Ok(())
     }
 
@@ -332,8 +389,9 @@ impl Prompt {
         let action = match (key.modifiers, key.key) {
             (NONE, Enter) | (CTRL, Char('J')) | (CTRL, Char('M')) => {
                 // Finish.
+                let _ = self.history.save();
                 let mut run = self.run.take();
-                let value: String = self.state.value[..].iter().collect();
+                let value: String = self.state().value[..].iter().collect();
                 return Ok(Some(Action::Run(Box::new(move |screen: &mut Screen| {
                     screen.clear_prompt();
                     if let Some(ref mut run) = run {
@@ -350,31 +408,33 @@ impl Prompt {
                     Ok(Some(Action::Render))
                 }))));
             }
-            (NONE, Char(c)) => self.state.insert_char(c, value_width),
-            (NONE, Backspace) | (CTRL, Char('H')) => self.state.delete_prev_char(),
-            (NONE, Delete) | (CTRL, Char('D')) => self.state.delete_next_char(),
-            (CTRL, Char('W')) | (ALT, Backspace) => self.state.delete_prev_word(),
-            (ALT, Char('d')) => self.state.delete_next_word(),
-            (NONE, RightArrow) | (CTRL, Char('F')) => self.state.move_next_char(),
-            (NONE, LeftArrow) | (CTRL, Char('B')) => self.state.move_prev_char(),
-            (CTRL, RightArrow) | (ALT, Char('f')) => self.state.move_next_word(),
-            (CTRL, LeftArrow) | (ALT, Char('b')) => self.state.move_prev_word(),
-            (CTRL, Char('K')) => self.state.delete_to_end(),
-            (CTRL, Char('U')) => self.state.delete_to_start(),
-            (NONE, End) | (CTRL, Char('E')) => self.state.move_to_end(),
-            (NONE, Home) | (CTRL, Char('A')) => self.state.move_to_start(),
-            (CTRL, Char('T')) => self.state.transpose_chars(),
+            (NONE, Char(c)) => self.state_mut().insert_char(c, value_width),
+            (NONE, Backspace) | (CTRL, Char('H')) => self.state_mut().delete_prev_char(),
+            (NONE, Delete) | (CTRL, Char('D')) => self.state_mut().delete_next_char(),
+            (CTRL, Char('W')) | (ALT, Backspace) => self.state_mut().delete_prev_word(),
+            (ALT, Char('d')) => self.state_mut().delete_next_word(),
+            (NONE, RightArrow) | (CTRL, Char('F')) => self.state_mut().move_next_char(),
+            (NONE, LeftArrow) | (CTRL, Char('B')) => self.state_mut().move_prev_char(),
+            (CTRL, RightArrow) | (ALT, Char('f')) => self.state_mut().move_next_word(),
+            (CTRL, LeftArrow) | (ALT, Char('b')) => self.state_mut().move_prev_word(),
+            (CTRL, Char('K')) => self.state_mut().delete_to_end(),
+            (CTRL, Char('U')) => self.state_mut().delete_to_start(),
+            (NONE, End) | (CTRL, Char('E')) => self.state_mut().move_to_end(),
+            (NONE, Home) | (CTRL, Char('A')) => self.state_mut().move_to_start(),
+            (CTRL, Char('T')) => self.state_mut().transpose_chars(),
+            (NONE, UpArrow) => self.history.previous(),
+            (NONE, DownArrow) => self.history.next(),
             _ => return Ok(None),
         };
-        self.state.clamp_offset(value_width);
+        self.state_mut().clamp_offset(value_width);
         Ok(action)
     }
 
     /// Paste some text into the prompt.
     pub(crate) fn paste(&mut self, text: &str, width: usize) -> Result<Option<Action>, Error> {
         let value_width = width - self.prompt.width() - 4;
-        let action = self.state.insert_str(text);
-        self.state.clamp_offset(value_width);
+        let action = self.state_mut().insert_str(text);
+        self.state_mut().clamp_offset(value_width);
         Ok(action)
     }
 }

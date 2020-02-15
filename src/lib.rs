@@ -26,6 +26,7 @@ mod line_drawing;
 mod overstrike;
 mod progress;
 mod prompt;
+mod prompt_history;
 mod refresh;
 mod ruler;
 mod screen;
