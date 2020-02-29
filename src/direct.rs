@@ -246,10 +246,7 @@ impl StreamingLines {
         // Step 1: Erase progress, and error.
         let erase_line_count = self.progress_lines.len() + self.error_lines.len();
         if erase_line_count > 0 {
-            // XXX: This is a workaround to a bug in termwiz. It is only correct
-            // with the buggy termwiz! See https://github.com/wez/wezterm/pull/109.
-            // let dy = -(erase_line_count as isize);
-            let dy = (0xffff_ffff_0000_0000u64 | (erase_line_count as u64)) as isize;
+            let dy = -(erase_line_count as isize);
             changes.push(Change::CursorPosition {
                 x: Position::NoChange,
                 y: Position::Relative(dy),
