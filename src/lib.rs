@@ -3,11 +3,11 @@
 //! A pager for streams.
 #![warn(missing_docs)]
 
+use anyhow::bail;
 pub use anyhow::Result;
-use anyhow::{anyhow, bail};
 use std::ffi::OsStr;
 use std::io::Read;
-use termwiz::caps::{Capabilities, ProbeHintsBuilder};
+use termwiz::caps::{Capabilities, ProbeHints};
 use termwiz::terminal::{SystemTerminal, Terminal};
 use vec_map::VecMap;
 
@@ -66,12 +66,8 @@ pub struct Pager {
 fn open_terminal() -> Result<(SystemTerminal, Capabilities)> {
     // Get terminal capabilities from the environment, but disable mouse
     // reporting, as we don't want to change the terminal's mouse handling.
-    let caps = Capabilities::new_with_hints(
-        ProbeHintsBuilder::new_from_env()
-            .mouse_reporting(Some(false))
-            .build()
-            .map_err(|s| anyhow!(s))?,
-    )?;
+    let caps =
+        Capabilities::new_with_hints(ProbeHints::new_from_env().mouse_reporting(Some(false)))?;
     if cfg!(unix) && caps.terminfo_db().is_none() {
         bail!("terminfo database not found (is $TERM correct?)");
     }
