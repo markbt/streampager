@@ -1,6 +1,7 @@
 // Run this with: cargo run --example streams_example
 
 use pipe::pipe;
+use std::io;
 use std::io::Write;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
@@ -11,35 +12,38 @@ fn main() -> Result<()> {
     let (err_read, mut err_write) = pipe();
     let (prog_read, mut prog_write) = pipe();
 
-    spawn(move || {
+    let out_thread = spawn(move || -> io::Result<()> {
         for i in 1..=100 {
-            let _ = out_write.write_all(b"this is line");
+            out_write.write_all(b"this is line")?;
             sleep(Duration::from_millis(225));
-            let _ = out_write.write_all(format!(" {}\n", i).as_bytes());
+            out_write.write_all(format!(" {}\n", i).as_bytes())?;
             sleep(Duration::from_millis(225));
         }
-        let _ = out_write.write_all(b"this is the end of output stream\n");
+        out_write.write_all(b"this is the end of output stream\n")?;
+        Ok(())
     });
 
-    spawn(move || {
+    let err_thread = spawn(move || -> io::Result<()> {
         for i in 1..=10 {
-            let _ = err_write.write_all(format!("this is error line {}\n", i).as_bytes());
+            err_write.write_all(format!("this is error line {}\n", i).as_bytes())?;
             sleep(Duration::from_millis(4000));
         }
-        let _ = err_write.write_all(b"this is the end of error stream\n");
+        err_write.write_all(b"this is the end of error stream\n")?;
+        Ok(())
     });
 
-    spawn(move || {
+    let progress_thread = spawn(move || -> io::Result<()> {
         let mut extra: &[u8] = b"";
         for i in 1..=100 {
-            let _ = prog_write.write_all(format!("progress step {}\n", i).as_bytes());
-            let _ = prog_write.write_all(extra);
-            let _ = prog_write.write_all(b"\x0c");
+            prog_write.write_all(format!("progress step {}\n", i).as_bytes())?;
+            prog_write.write_all(extra)?;
+            prog_write.write_all(b"\x0c")?;
             if i == 40 {
                 extra = b"\x1b[32mprogress can have colors and multiple lines\n";
             }
             sleep(Duration::from_millis(120));
         }
+        Ok(())
     });
 
     let mut pager = Pager::new_using_system_terminal()?;
@@ -52,5 +56,19 @@ fn main() -> Result<()> {
     pager.run()?;
 
     println!("pager has exited");
+    let wait_threads = vec![
+        spawn(move || {
+            println!("out thread joined: {:?}", out_thread.join());
+        }),
+        spawn(move || {
+            println!("err thread joined: {:?}", err_thread.join());
+        }),
+        spawn(move || {
+            println!("progress thread joined: {:?}", progress_thread.join());
+        }),
+    ];
+    for wait_thread in wait_threads {
+        wait_thread.join().unwrap();
+    }
     Ok(())
 }
