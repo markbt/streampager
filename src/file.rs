@@ -155,6 +155,10 @@ impl FileData {
                             return Ok(());
                         }
                         Ok(len) => {
+                            // If the pager has exited, ping() will fail and
+                            // this thread will drop "input". If "input" is a
+                            // pipe, the other end will notice EOF.
+                            event_sender.ping()?;
                             // Some data has been read.  Parse its newlines.
                             let line_count = {
                                 let mut newlines = meta.newlines.write().unwrap();
