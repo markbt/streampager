@@ -1,5 +1,5 @@
 //! Files.
-use anyhow::{Context, Error};
+use anyhow::{Context, Error, Result};
 use memmap::Mmap;
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use std::borrow::Cow;
@@ -134,7 +134,7 @@ impl FileData {
         let buffers = Arc::new(RwLock::new(Vec::new()));
         thread::spawn({
             let buffers = buffers.clone();
-            move || {
+            move || -> Result<()> {
                 let mut offset = 0usize;
                 let mut total_buffer_size = 0usize;
                 let mut waker_mutex = meta.waker_mutex.lock().unwrap();
@@ -151,8 +151,8 @@ impl FileData {
                         Ok(0) => {
                             // The end of the file has been reached.  Complete.
                             meta.finished.store(true, Ordering::SeqCst);
-                            event_sender.send(Event::Loaded(meta.index)).unwrap();
-                            return;
+                            event_sender.send(Event::Loaded(meta.index))?;
+                            return Ok(());
                         }
                         Ok(len) => {
                             // Some data has been read.  Parse its newlines.
@@ -248,7 +248,7 @@ impl FileData {
         thread::spawn({
             let buffer_cache = buffer_cache.clone();
             let path = path.to_path_buf();
-            move || {
+            move || -> Result<()> {
                 let loaded_instance = UniqueInstance::new();
                 let appending_instance = UniqueInstance::new();
                 let reloading_instance = UniqueInstance::new();
@@ -300,9 +300,7 @@ impl FileData {
                         (false, end_data.is_empty())
                     } else {
                         meta.finished.store(true, Ordering::SeqCst);
-                        event_sender
-                            .send_unique(Event::Loaded(meta.index), &loaded_instance)
-                            .unwrap();
+                        event_sender.send_unique(Event::Loaded(meta.index), &loaded_instance)?;
                         {
                             let mut reload_old_line_count =
                                 meta.reload_old_line_count.write().unwrap();
@@ -314,7 +312,7 @@ impl FileData {
                             Err(e) => {
                                 let mut error = meta.error.write().unwrap();
                                 *error = Some(e.into());
-                                return;
+                                return Ok(());
                             }
                         }
                     };
@@ -352,13 +350,11 @@ impl FileData {
                         total_length = 0;
                         if send_event {
                             event_sender
-                                .send_unique(Event::Reloading(meta.index), &reloading_instance)
-                                .unwrap();
+                                .send_unique(Event::Reloading(meta.index), &reloading_instance)?;
                         }
                     } else if send_event {
                         event_sender
-                            .send_unique(Event::Appending(meta.index), &appending_instance)
-                            .unwrap();
+                            .send_unique(Event::Appending(meta.index), &appending_instance)?;
                     }
                     meta.finished.store(false, Ordering::SeqCst);
                 }
