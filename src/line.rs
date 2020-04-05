@@ -1,10 +1,11 @@
 //! Lines in a file.
+use lru_cache::LruCache;
 use regex::bytes::{NoExpand, Regex};
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::str;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::escape::csi::{Sgr, CSI};
@@ -26,10 +27,33 @@ const LEFT_ARROW: &str = "<";
 const RIGHT_ARROW: &str = ">";
 const TAB_SPACES: &str = "        ";
 
+const WRAPS_CACHE_SIZE: usize = 4;
+
 /// Represents a single line in a displayed file.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub(crate) struct Line {
     spans: Box<[Span]>,
+    wraps: Arc<Mutex<LruCache<(usize, Wrapping), Vec<(usize, usize)>>>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Wrapping {
+    /// The line is not wrapped.
+    Unwrapped,
+    /// The line is wrapped on grapheme boundaries.
+    GraphemeBoundary,
+    /// The line is wrapped on word boundaries.
+    WordBoundary,
+}
+
+impl Wrapping {
+    pub(crate) fn next_mode(&self) -> Wrapping {
+        match self {
+            Wrapping::Unwrapped => Wrapping::GraphemeBoundary,
+            Wrapping::GraphemeBoundary => Wrapping::WordBoundary,
+            Wrapping::WordBoundary => Wrapping::Unwrapped,
+        }
+    }
 }
 
 /// Style that is being applied.
@@ -205,6 +229,47 @@ fn write_truncated(
     Ok(position + text_width)
 }
 
+struct SplitWords<'t> {
+    text: &'t str,
+}
+
+impl<'t> SplitWords<'t> {
+    fn new(text: &'t str) -> Self {
+        SplitWords { text }
+    }
+}
+
+impl<'t> Iterator for SplitWords<'t> {
+    type Item = (&'t str, &'t str);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let text = self.text;
+        if text.is_empty() {
+            return None;
+        }
+        for (i, ch) in text.char_indices() {
+            if ch.is_whitespace() {
+                for (j, ch) in text[i..].char_indices() {
+                    if !ch.is_whitespace() {
+                        self.text = &text[i + j..];
+                        return Some((&text[..i], &text[i..i + j]));
+                    }
+                }
+                let end = text.len();
+                self.text = &text[end..end];
+                return Some((&text[..i], &text[i..]));
+            }
+            if ch == '-' {
+                self.text = &text[i + 1..];
+                return Some((&text[..i + 1], &text[i + 1..i + 1]));
+            }
+        }
+        let end = text.len();
+        self.text = &text[end..end];
+        Some((text, &text[end..end]))
+    }
+}
+
 impl Span {
     /// Render the span at the given position in the terminal.
     fn render(
@@ -296,6 +361,105 @@ impl Span {
             _ => {}
         }
         Ok(position)
+    }
+
+    fn split(
+        &self,
+        rows: &mut Vec<(usize, usize)>,
+        start: usize,
+        position: usize,
+        width: usize,
+        words: bool,
+    ) -> (usize, usize) {
+        match self {
+            Span::Text(text) | Span::Match(text, _) => {
+                let mut start = start;
+                let mut position = position;
+                if words {
+                    for (word, sep) in SplitWords::new(text) {
+                        let end = position + word.width() + sep.width();
+                        if end - start <= width {
+                            // This word fits within this row
+                            position = end;
+                        } else {
+                            // This word wraps to the next row.
+                            if start != position {
+                                // Add the existing words to the row.
+                                rows.push((start, position));
+                                start = position;
+                            }
+                            if end - start > width {
+                                // This word is at the start of the row and is longer than the whole
+                                // row.  Break it at grapheme boundaries.
+                                for grapheme in word.graphemes(true).chain(sep.graphemes(true)) {
+                                    let end = position + grapheme.width();
+                                    if end - start <= width {
+                                        // This character fits within this row
+                                        position = end;
+                                    } else {
+                                        // This character wraps to the next row
+                                        rows.push((start, position));
+                                        start = position;
+                                        position = end;
+                                    }
+                                }
+                            } else {
+                                position = end;
+                            }
+                        }
+                    }
+                } else {
+                    for grapheme in text.graphemes(true) {
+                        let end = position + grapheme.width();
+                        if end - start <= width {
+                            // This character fits within this row
+                            position = end;
+                        } else {
+                            // This character wraps to the next row
+                            rows.push((start, position));
+                            start = position;
+                            position = end;
+                        }
+                    }
+                }
+                (start, position)
+            }
+            Span::TAB => {
+                let tabchars = 8 - position % 8;
+                let end = position + tabchars;
+                if end - start <= width {
+                    // This tab fits within this row
+                    (start, end)
+                } else {
+                    // This tab completes the row
+                    rows.push((start, end));
+                    (end, end)
+                }
+            }
+            Span::Control(_) | Span::Invalid(_) => {
+                let end = position + 4;
+                if end - start <= width {
+                    // This character fits within this row
+                    (start, end)
+                } else {
+                    // This character wraps to the next row
+                    rows.push((start, position));
+                    (position, end)
+                }
+            }
+            Span::Unprintable(_) => {
+                let end = position + 8;
+                if end - start <= width {
+                    // This character fits within this row
+                    (start, end)
+                } else {
+                    // This character wraps to the next row
+                    rows.push((start, position));
+                    (position, end)
+                }
+            }
+            _ => (start, position),
+        }
     }
 }
 
@@ -456,7 +620,8 @@ impl Line {
         let data = data.as_ref();
         let data = overstrike::convert_overstrike(&data[..]);
         let spans = parse_spans(&data[..], None).into_boxed_slice();
-        Line { spans }
+        let wraps = Arc::new(Mutex::new(LruCache::new(WRAPS_CACHE_SIZE)));
+        Line { spans, wraps }
     }
 
     pub(crate) fn new_search(_index: usize, data: impl AsRef<[u8]>, regex: &Regex) -> Line {
@@ -508,7 +673,8 @@ impl Line {
             spans.append(&mut parse_spans(&data[start..], None));
         }
         let spans = spans.into_boxed_slice();
-        Line { spans }
+        let wraps = Arc::new(Mutex::new(LruCache::new(WRAPS_CACHE_SIZE)));
+        Line { spans, wraps }
     }
 
     /// Produce the `Change`s needed to render a slice of the line on a terminal.
@@ -563,6 +729,83 @@ impl Line {
             Ordering::Less => changes.push(Change::ClearToEndOfLine(ColorAttribute::default())),
         }
         Ok(())
+    }
+
+    /// Produce the `Change`s needed to render a row of the wrapped line on a terminal.
+    pub(crate) fn render_wrapped(
+        &self,
+        changes: &mut Vec<Change>,
+        row: usize,
+        width: usize,
+        wrapping: Wrapping,
+        search_index: Option<usize>,
+    ) -> Result<(), std::io::Error> {
+        let (start, end) = {
+            let mut wraps = self.wraps.lock().unwrap();
+            if let Some(rows) = wraps.get_mut(&(width, wrapping)) {
+                let (start, end) = rows.get(row).unwrap_or(&(0, 0));
+                (*start, *end)
+            } else {
+                let rows = self.make_wrap(width, wrapping);
+                let (start, end) = rows.get(row).unwrap_or(&(0, 0));
+                let (start, end) = (*start, *end);
+                wraps.insert((width, wrapping), rows);
+                (start, end)
+            }
+        };
+        let mut attr_state = AttributeState::new();
+        let mut position = 0;
+        for span in self.spans.iter() {
+            position = span.render(changes, &mut attr_state, start, end, position, search_index)?;
+        }
+        if end - start < width {
+            changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+        }
+        Ok(())
+    }
+
+    /// Returns the start and end pairs for each row of the line if wrapped.
+    fn make_wrap(&self, width: usize, wrapping: Wrapping) -> Vec<(usize, usize)> {
+        let mut rows = Vec::new();
+        match wrapping {
+            Wrapping::Unwrapped => {
+                rows.push((0, std::usize::MAX));
+            }
+            Wrapping::GraphemeBoundary | Wrapping::WordBoundary => {
+                let mut start = 0;
+                let mut position = 0;
+                for span in self.spans.iter() {
+                    let (new_start, new_position) = span.split(
+                        &mut rows,
+                        start,
+                        position,
+                        width,
+                        wrapping == Wrapping::WordBoundary,
+                    );
+                    start = new_start;
+                    position = new_position;
+                }
+                if position > start || rows.is_empty() {
+                    rows.push((start, position))
+                }
+            }
+        }
+        rows
+    }
+
+    /// Returns the number of rows for this line if wrapped at the given width
+    pub(crate) fn height(&self, width: usize, wrapping: Wrapping) -> usize {
+        if wrapping == Wrapping::Unwrapped {
+            return 1;
+        }
+        let mut wraps = self.wraps.lock().unwrap();
+        if let Some(rows) = wraps.get_mut(&(width, wrapping)) {
+            return rows.len();
+        }
+        let rows = self.make_wrap(width, wrapping);
+        let height = rows.len();
+        wraps.insert((width, wrapping), rows);
+        height
     }
 }
 
@@ -691,6 +934,60 @@ mod test {
         assert_eq!(
             parse_spans(b"Internal\r\nCRLF", None),
             vec![Text("Internal".to_string()), CRLF, Text("CRLF".to_string())]
+        );
+    }
+
+    #[test]
+    fn test_wrap() {
+        let data = concat!(
+            "A simple line with several words, including some superobnoxiously ",
+            "big ones and some extra-confusingly-awkward hyphenated ones."
+        );
+        let data_wrapped_10 = vec![
+            "A simple ",
+            "line with ",
+            "several ",
+            "words, ",
+            "including ",
+            "some ",
+            "superobnox",
+            "iously ",
+            "big ones ",
+            "and some ",
+            "extra-",
+            "confusingl",
+            "y-awkward ",
+            "hyphenated",
+            " ones.",
+        ];
+        let line = Line::new(0, data.as_bytes());
+        assert_eq!(
+            line.make_wrap(100, Wrapping::Unwrapped),
+            vec![(0, std::usize::MAX)],
+        );
+        assert_eq!(
+            line.make_wrap(40, Wrapping::GraphemeBoundary),
+            vec![(0, 40), (40, 80), (80, 120), (120, 126)],
+        );
+
+        // The start and end values are positions, not string indices, but since data is pure ASCII
+        // they will match.
+        let line_wrapped_10: Vec<_> = line
+            .make_wrap(10, Wrapping::WordBoundary)
+            .iter()
+            .map(|(start, end)| &data[*start..*end])
+            .collect();
+        assert_eq!(line_wrapped_10, data_wrapped_10);
+
+        // In this example, the control character doesn't fit into the 40 character width.
+        let line = Line::new(
+            0,
+            "Some line with Únícódé and \x1B[31mcolors\x1B[m and \x01Control characters\r\n"
+                .as_bytes(),
+        );
+        assert_eq!(
+            line.make_wrap(40, Wrapping::GraphemeBoundary),
+            vec![(0, 38), (38, 60)],
         );
     }
 }

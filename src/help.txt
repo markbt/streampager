@@ -20,6 +20,7 @@
   [1;4mPresentation[m
 
     [1m#[m                         Toggle display of line numbers
+    [1m\[m                         Toggle line and word wrapping
 
   [1;4mSearching[m
 
