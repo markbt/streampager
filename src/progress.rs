@@ -7,6 +7,7 @@
 //! Progress indicator pages are blocks of text terminated by an ASCII form-feed
 //! character.  The progress indicator will display the most recently received
 //! page.
+use anyhow::Result;
 use std::io::{BufRead, BufReader, Read};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -50,30 +51,30 @@ impl Progress {
         thread::spawn({
             let inner = inner.clone();
             let progress_unique = UniqueInstance::new();
-            move || loop {
-                let mut buffer = Vec::with_capacity(PROGRESS_BUFFER_SIZE);
-                match input.read_until(b'\x0C', &mut buffer) {
-                    Ok(0) | Err(_) => {
-                        let mut inner = inner.write().unwrap();
-                        inner.buffer = Vec::new();
-                        inner.newlines = Vec::new();
-                        inner.finished = true;
-                        return;
-                    }
-                    Ok(len) => {
-                        buffer.truncate(len - 1);
-                        let mut newlines = Vec::new();
-                        for (i, byte) in buffer.iter().enumerate().take(len - 1) {
-                            if *byte == b'\n' {
-                                newlines.push(i);
-                            }
+            move || -> Result<()> {
+                loop {
+                    let mut buffer = Vec::with_capacity(PROGRESS_BUFFER_SIZE);
+                    match input.read_until(b'\x0C', &mut buffer) {
+                        Ok(0) | Err(_) => {
+                            let mut inner = inner.write().unwrap();
+                            inner.buffer = Vec::new();
+                            inner.newlines = Vec::new();
+                            inner.finished = true;
+                            return Ok(());
                         }
-                        let mut inner = inner.write().unwrap();
-                        inner.buffer = buffer;
-                        inner.newlines = newlines;
-                        event_sender
-                            .send_unique(Event::Progress, &progress_unique)
-                            .unwrap();
+                        Ok(len) => {
+                            buffer.truncate(len - 1);
+                            let mut newlines = Vec::new();
+                            for (i, byte) in buffer.iter().enumerate().take(len - 1) {
+                                if *byte == b'\n' {
+                                    newlines.push(i);
+                                }
+                            }
+                            let mut inner = inner.write().unwrap();
+                            inner.buffer = buffer;
+                            inner.newlines = newlines;
+                            event_sender.send_unique(Event::Progress, &progress_unique)?;
+                        }
                     }
                 }
             }

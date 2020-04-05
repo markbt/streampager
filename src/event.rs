@@ -47,6 +47,7 @@ impl UniqueInstance {
 pub(crate) enum Envelope {
     Normal(Event),
     Unique(Event, UniqueInstance),
+    Ping,
 }
 
 /// An event sender endpoint.
@@ -65,6 +66,12 @@ impl EventSender {
             self.1.wake()?;
         }
         Ok(())
+    }
+
+    /// Check if the other side is still connected.
+    /// This is useful to detect if the pager has exited (user pressed 'q').
+    pub(crate) fn ping(&self) -> Result<(), Error> {
+        Ok(self.0.send(Envelope::Ping)?)
     }
 }
 
@@ -88,13 +95,19 @@ impl EventStream {
         EventSender(self.send.clone(), self.waker.clone())
     }
 
-    fn receive(&self, envelope: Envelope) -> Event {
-        match envelope {
-            Envelope::Normal(event) => event,
-            Envelope::Unique(event, unique) => {
-                unique.0.store(false, Ordering::SeqCst);
-                event
-            }
+    fn try_recv(&self) -> Result<Option<Event>, Error> {
+        loop {
+            return match self.recv.try_recv() {
+                Ok(Envelope::Normal(event)) => Ok(Some(event)),
+                Ok(Envelope::Unique(event, unique)) => {
+                    unique.0.store(false, Ordering::SeqCst);
+                    Ok(Some(event))
+                }
+                // Consume all `Ping`s.
+                Ok(Envelope::Ping) => continue,
+                Err(mpsc::TryRecvError::Empty) => Ok(None),
+                Err(e) => Err(e.into()),
+            };
         }
     }
 
@@ -104,30 +117,16 @@ impl EventStream {
         term: &mut dyn Terminal,
         wait: Option<Duration>,
     ) -> Result<Option<Event>, Error> {
-        // First, try to get an event from the queue.
-        match self.recv.try_recv() {
-            Ok(envelope) => return Ok(Some(self.receive(envelope))),
-            Err(mpsc::TryRecvError::Empty) => {}
-            Err(e) => return Err(e.into()),
-        }
-
         loop {
+            if let Some(event) = self.try_recv()? {
+                return Ok(Some(event));
+            }
+
             // The queue is empty.  Try to get an input event from the terminal.
             match term.poll_input(wait)? {
                 Some(InputEvent::Wake) => {}
                 Some(input_event) => return Ok(Some(Event::Input(input_event))),
                 None => return Ok(None),
-            }
-
-            // A wake event was received.  Get the event from the event stream.
-            match self.recv.try_recv() {
-                Ok(envelope) => return Ok(Some(self.receive(envelope))),
-                Err(mpsc::TryRecvError::Empty) => {
-                    // The queue was empty.  That means we collected all events
-                    // before their wake event arrived.  Ignore the wake event
-                    // and go back to waiting.
-                }
-                Err(e) => return Err(e.into()),
             }
         }
     }
