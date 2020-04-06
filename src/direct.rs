@@ -248,7 +248,7 @@ impl StreamingLines {
         if erase_line_count > 0 {
             let dy = -(erase_line_count as isize);
             changes.push(Change::CursorPosition {
-                x: Position::NoChange,
+                x: Position::Relative(0),
                 y: Position::Relative(dy),
             });
             changes.push(Change::ClearToEndOfScreen(Default::default()));
