@@ -548,7 +548,7 @@ impl Line {
                 changes.push(Change::Text("\x08".into()));
                 changes.push(Change::CursorPosition {
                     x: Position::Relative(1),
-                    y: Position::NoChange,
+                    y: Position::Relative(0),
                 });
                 changes.push(Change::AllAttributes(
                     CellAttributes::default()
