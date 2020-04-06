@@ -11,16 +11,25 @@ fn main() -> Result<()> {
     let (out_read, mut out_write) = pipe();
     let (err_read, mut err_write) = pipe();
     let (prog_read, mut prog_write) = pipe();
+    let infinite_output = std::env::args().nth(1) == Some("inf".to_string());
 
     let out_thread = spawn(move || -> io::Result<()> {
-        for i in 1..=100 {
-            out_write.write_all(b"this is line")?;
-            sleep(Duration::from_millis(225));
-            out_write.write_all(format!(" {}\n", i).as_bytes())?;
-            sleep(Duration::from_millis(225));
+        if infinite_output {
+            let mut i = 0;
+            loop {
+                i += 1;
+                out_write.write_all(format!("this is line {}\n", i).as_bytes())?;
+            }
+        } else {
+            for i in 1..=100 {
+                out_write.write_all(b"this is line")?;
+                sleep(Duration::from_millis(225));
+                out_write.write_all(format!(" {}\n", i).as_bytes())?;
+                sleep(Duration::from_millis(225));
+            }
+            out_write.write_all(b"this is the end of output stream\n")?;
+            Ok(())
         }
-        out_write.write_all(b"this is the end of output stream\n")?;
-        Ok(())
     });
 
     let err_thread = spawn(move || -> io::Result<()> {
