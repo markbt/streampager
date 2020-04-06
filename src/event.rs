@@ -47,7 +47,6 @@ impl UniqueInstance {
 pub(crate) enum Envelope {
     Normal(Event),
     Unique(Event, UniqueInstance),
-    Ping,
 }
 
 /// An event sender endpoint.
@@ -66,12 +65,6 @@ impl EventSender {
             self.1.wake()?;
         }
         Ok(())
-    }
-
-    /// Check if the other side is still connected.
-    /// This is useful to detect if the pager has exited (user pressed 'q').
-    pub(crate) fn ping(&self) -> Result<(), Error> {
-        Ok(self.0.send(Envelope::Ping)?)
     }
 }
 
@@ -103,8 +96,6 @@ impl EventStream {
                     unique.0.store(false, Ordering::SeqCst);
                     Ok(Some(event))
                 }
-                // Consume all `Ping`s.
-                Ok(Envelope::Ping) => continue,
                 Err(mpsc::TryRecvError::Empty) => Ok(None),
                 Err(e) => Err(e.into()),
             };
