@@ -695,7 +695,9 @@ impl Screen {
 
             // 1 screen
             (NONE, PageDown) | (NONE, Char(' ')) | (CTRL, Char('F')) => self.scroll_down_screen(1),
-            (NONE, PageUp) | (NONE, Backspace) | (CTRL, Char('B')) => self.scroll_down_screen(-1),
+            (NONE, PageUp) | (NONE, Backspace) | (NONE, Char('b')) | (CTRL, Char('B')) => {
+                self.scroll_down_screen(-1)
+            }
 
             (NONE, End) | (NONE, Char('G')) => self.following_end = true,
             (NONE, Home) | (NONE, Char('g')) => self.scroll_up(self.position.top),
