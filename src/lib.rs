@@ -62,8 +62,8 @@ pub struct Pager {
     config: Config,
 }
 
-/// Determine terminal capabilities and open the terminal.
-fn open_terminal() -> Result<(SystemTerminal, Capabilities)> {
+/// Determine terminal capabilities.
+fn termcaps() -> Result<Capabilities> {
     // Get terminal capabilities from the environment, but disable mouse
     // reporting, as we don't want to change the terminal's mouse handling.
     let caps =
@@ -71,15 +71,45 @@ fn open_terminal() -> Result<(SystemTerminal, Capabilities)> {
     if cfg!(unix) && caps.terminfo_db().is_none() {
         bail!("terminfo database not found (is $TERM correct?)");
     }
-    let mut term = SystemTerminal::new(caps.clone())?;
-    term.set_raw_mode()?;
-    Ok((term, caps))
+    Ok(caps)
 }
 
 impl Pager {
     /// Build a `Pager` using the system terminal.
-    pub fn new_using_system_terminal() -> Result<Pager> {
-        let (term, caps) = open_terminal()?;
+    pub fn new_using_system_terminal() -> Result<Self> {
+        Self::new_with_terminal_func(|caps| SystemTerminal::new(caps))
+    }
+
+    /// Build a `Pager` using the system stdio.
+    pub fn new_using_stdio() -> Result<Self> {
+        Self::new_with_terminal_func(|caps| SystemTerminal::new_from_stdio(caps))
+    }
+
+    #[cfg(unix)]
+    /// Build a `Pager` using the specified terminal input and output.
+    pub fn new_with_input_output(
+        input: impl std::os::unix::io::AsRawFd,
+        output: impl std::os::unix::io::AsRawFd,
+    ) -> Result<Self> {
+        Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output))
+    }
+
+    #[cfg(windows)]
+    /// Build a `Pager` using the specified terminal input and output.
+    pub fn new_with_input_output(
+        input: impl std::io::Read + termwiz::istty::IsTty + std::os::windows::io::AsRawHandle,
+        output: impl std::io::Write + termwiz::istty::IsTty + std::os::windows::io::AsRawHandle,
+    ) -> Result<Self> {
+        Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output))
+    }
+
+    fn new_with_terminal_func(
+        create_term: impl FnOnce(Capabilities) -> Result<SystemTerminal>,
+    ) -> Result<Self> {
+        let caps = termcaps()?;
+        let mut term = create_term(caps.clone())?;
+        term.set_raw_mode()?;
+
         let events = EventStream::new(term.waker());
         let files = Vec::new();
         let error_files = VecMap::new();
