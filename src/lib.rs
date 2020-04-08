@@ -88,8 +88,8 @@ impl Pager {
     #[cfg(unix)]
     /// Build a `Pager` using the specified terminal input and output.
     pub fn new_with_input_output(
-        input: impl std::os::unix::io::AsRawFd,
-        output: impl std::os::unix::io::AsRawFd,
+        input: &impl std::os::unix::io::AsRawFd,
+        output: &impl std::os::unix::io::AsRawFd,
     ) -> Result<Self> {
         Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output))
     }
