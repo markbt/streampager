@@ -73,6 +73,10 @@ struct FileMeta {
     /// Set to true when the file has been loaded and parsed.
     finished: AtomicBool,
 
+    /// Set to true when the file has been dropped. Checked by background
+    /// threads to exit early.
+    dropped: AtomicBool,
+
     /// The most recent error encountered when loading the file.
     error: RwLock<Option<Error>>,
 
@@ -110,6 +114,7 @@ impl FileMeta {
             newlines: RwLock::new(Vec::new()),
             reload_old_line_count: RwLock::new(None),
             finished: AtomicBool::new(false),
+            dropped: AtomicBool::new(false),
             error: RwLock::new(None),
             needed_lines: AtomicUsize::new(DEFAULT_NEEDED_LINES),
             waker: Condvar::new(),
@@ -155,10 +160,9 @@ impl FileData {
                             return Ok(());
                         }
                         Ok(len) => {
-                            // If the pager has exited, ping() will fail and
-                            // this thread will drop "input". If "input" is a
-                            // pipe, the other end will notice EOF.
-                            event_sender.ping()?;
+                            if meta.dropped.load(Ordering::SeqCst) {
+                                return Ok(());
+                            }
                             // Some data has been read.  Parse its newlines.
                             let line_count = {
                                 let mut newlines = meta.newlines.write().unwrap();
@@ -175,6 +179,9 @@ impl FileData {
                             while line_count >= meta.needed_lines.load(Ordering::SeqCst) {
                                 // Enough data is loaded. Pause.
                                 waker_mutex = meta.waker.wait(waker_mutex).unwrap();
+                                if meta.dropped.load(Ordering::SeqCst) {
+                                    return Ok(());
+                                }
                             }
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
@@ -205,8 +212,9 @@ impl FileData {
         thread::spawn({
             let events = events.clone();
             let appending = appending.clone();
+            let meta = meta.clone();
             let path = path.to_path_buf();
-            move || {
+            move || -> Result<()> {
                 loop {
                     let (tx, rx) = mpsc::channel();
                     let mut watcher: RecommendedWatcher =
@@ -215,24 +223,27 @@ impl FileData {
                         .watch(path.clone(), RecursiveMode::NonRecursive)
                         .expect("watch file");
                     loop {
+                        if meta.dropped.load(Ordering::SeqCst) {
+                            return Ok(());
+                        }
                         let event = rx.recv();
                         match event {
                             Ok(DebouncedEvent::NoticeWrite(_)) => {
                                 appending.store(true, Ordering::SeqCst);
-                                let _ = events.send(FileEvent::Append);
+                                events.send(FileEvent::Append)?;
                             }
                             Ok(DebouncedEvent::Write(_)) => {
                                 appending.store(false, Ordering::SeqCst);
-                                let _ = events.send(FileEvent::Append);
+                                events.send(FileEvent::Append)?;
                             }
                             Ok(DebouncedEvent::Create(_)) => {
-                                let _ = events.send(FileEvent::Append);
+                                events.send(FileEvent::Append)?;
                             }
                             Ok(DebouncedEvent::Rename(_, _)) => {
-                                let _ = events.send(FileEvent::Reload);
+                                events.send(FileEvent::Reload)?;
                             }
                             Ok(DebouncedEvent::NoticeRemove(_)) | Ok(DebouncedEvent::Chmod(_)) => {
-                                let _ = events.send(FileEvent::Reload);
+                                events.send(FileEvent::Reload)?;
                                 break;
                             }
                             Err(_) => {
@@ -267,6 +278,9 @@ impl FileData {
                             match file.read(buffer.as_mut_slice()) {
                                 Ok(0) => break,
                                 Ok(len) => {
+                                    if meta.dropped.load(Ordering::SeqCst) {
+                                        return Ok(());
+                                    }
                                     let mut newlines = meta.newlines.write().unwrap();
                                     for (i, byte) in buffer.iter().enumerate().take(len) {
                                         if *byte == b'\n' {
@@ -395,10 +409,13 @@ impl FileData {
         let mmap = Arc::new(unsafe { Mmap::map(&file)? });
         thread::spawn({
             let mmap = mmap.clone();
-            move || {
+            move || -> Result<()> {
                 let len = mmap.len();
                 let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
                 for block in 0..blocks {
+                    if meta.dropped.load(Ordering::SeqCst) {
+                        return Ok(());
+                    }
                     let mut newlines = meta.newlines.write().unwrap();
                     for i in block * BUFFER_SIZE..min((block + 1) * BUFFER_SIZE, len) {
                         if mmap[i] == b'\n' {
@@ -408,7 +425,8 @@ impl FileData {
                 }
                 meta.length.store(len, Ordering::SeqCst);
                 meta.finished.store(true, Ordering::SeqCst);
-                event_sender.send(Event::Loaded(meta.index)).unwrap();
+                event_sender.send(Event::Loaded(meta.index))?;
+                Ok(())
             }
         });
         Ok(FileData::Mapped { mmap })
@@ -423,10 +441,13 @@ impl FileData {
         event_sender: EventSender,
     ) -> Result<FileData, Error> {
         thread::spawn({
-            move || {
+            move || -> Result<()> {
                 let len = data.len();
                 let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
                 for block in 0..blocks {
+                    if meta.dropped.load(Ordering::SeqCst) {
+                        return Ok(());
+                    }
                     let mut newlines = meta.newlines.write().unwrap();
                     for (i, byte) in data
                         .iter()
@@ -441,7 +462,8 @@ impl FileData {
                 }
                 meta.length.store(len, Ordering::SeqCst);
                 meta.finished.store(true, Ordering::SeqCst);
-                event_sender.send(Event::Loaded(meta.index)).unwrap();
+                event_sender.send(Event::Loaded(meta.index))?;
+                Ok(())
             }
         });
         Ok(FileData::Static { data })
@@ -587,7 +609,7 @@ impl File {
         let err_file = File::new_streamed(index + 1, err, &title_err, event_sender.clone())?;
         thread::spawn({
             let out_file = out_file.clone();
-            move || {
+            move || -> Result<()> {
                 if let Ok(rc) = process.wait() {
                     if !rc.success() {
                         let mut info = out_file.meta.info.write().unwrap();
@@ -595,9 +617,10 @@ impl File {
                             Some(code) => info.push(format!("rc: {}", code)),
                             None => info.push("killed!".to_string()),
                         }
-                        event_sender.send(Event::RefreshOverlay).unwrap();
+                        event_sender.send(Event::RefreshOverlay)?;
                     }
                 }
+                Ok(())
             }
         });
         Ok((out_file, err_file))
@@ -695,6 +718,15 @@ impl File {
     /// Check if the loading thread has been paused.
     pub(crate) fn paused(&self) -> bool {
         !self.loaded() && self.meta.waker_mutex.try_lock().is_ok()
+    }
+}
+
+impl Drop for File {
+    fn drop(&mut self) {
+        self.meta.dropped.store(true, Ordering::SeqCst);
+        // The thread might be blocked. Wake it up so it can notice the change
+        // in `dropped`.
+        self.meta.waker.notify_all();
     }
 }
 
