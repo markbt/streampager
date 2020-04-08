@@ -55,8 +55,7 @@ fn generate_man_page(out_dir: impl AsRef<Path>) -> Result<(), io::Error> {
         .spawn()?
         .wait()?;
     if !result.success() {
-        let msg = format!("'a2x' failed with exit code {:?}", result.code());
-        return Err(io::Error::new(io::ErrorKind::Other, msg));
+        eprintln!("'a2x' failed with exit code {:?}", result.code());
     }
     Ok(())
 }
