@@ -3,9 +3,9 @@
 use crate::config::InterfaceMode;
 use crate::event::{Event, EventStream};
 use crate::file::File;
-use crate::line::Line;
+use crate::line::{Line, Wrapping};
 use crate::progress::Progress;
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use std::time::{Duration, Instant};
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
@@ -116,21 +116,16 @@ pub(crate) fn direct<T: Terminal>(
         let append_output_lines = collect_unread(output_files, h + 2);
         let append_error_lines = collect_unread(error_files, h + 2);
         let progress_lines = read_progress_lines();
+        state.add_lines(append_output_lines, append_error_lines, progress_lines);
         if delayed {
-            state.apply_changes(0, &append_output_lines, &append_error_lines, progress_lines);
-            if has_one_screen_limit && state.height() >= h {
+            if has_one_screen_limit && state.height(w) >= h {
                 return Ok(Some(Outcome::RenderNothing));
             }
         } else {
-            let changes = state.render_changes(
-                &append_output_lines,
-                &append_error_lines,
-                progress_lines,
-                w,
-            )?;
-            if has_one_screen_limit && state.height() >= h {
+            if has_one_screen_limit && state.height(w) >= h {
                 return Ok(Some(Outcome::RenderIncomplete));
             }
+            let changes = state.render_pending_lines(w)?;
             term.render(&changes)?;
         }
         Ok(None)
@@ -180,7 +175,7 @@ pub(crate) fn direct<T: Terminal>(
     }
 
     if delayed {
-        term.render(&state.render_all(size.cols)?)?;
+        term.render(&state.render_pending_lines(size.cols)?)?;
     }
 
     Ok(Outcome::RenderComplete)
@@ -199,54 +194,48 @@ pub(crate) fn direct<T: Terminal>(
 /// +----------------------------+
 #[derive(Default)]
 struct StreamingLines {
-    past_output_line_count: usize,
-    past_output_lines: Vec<Vec<u8>>,
+    past_output_row_count: usize,
+    new_output_lines: Vec<Vec<u8>>,
     error_lines: Vec<Vec<u8>>,
     progress_lines: Vec<Vec<u8>>,
+    erase_row_count: usize,
+    pending_changes: bool,
 }
 
 impl StreamingLines {
-    fn apply_changes(
+    fn add_lines(
         &mut self,
-        past_output_line_count: usize,
-        append_output_lines: &[Vec<u8>],
-        append_error_lines: &[Vec<u8>],
+        mut append_output_lines: Vec<Vec<u8>>,
+        mut append_error_lines: Vec<Vec<u8>>,
         replace_progress_lines: Vec<Vec<u8>>,
     ) {
-        self.past_output_line_count += past_output_line_count;
-        self.past_output_lines
-            .extend_from_slice(append_output_lines);
-        self.error_lines.extend_from_slice(append_error_lines);
-        self.progress_lines = replace_progress_lines;
-    }
-
-    fn render_changes(
-        &mut self,
-        append_output_lines: &[Vec<u8>],
-        append_error_lines: &[Vec<u8>],
-        replace_progress_lines: Vec<Vec<u8>>,
-        terminal_width: usize,
-    ) -> Result<Vec<Change>> {
-        // Fast path: nothing changed?
         if append_output_lines.is_empty()
             && append_error_lines.is_empty()
             && replace_progress_lines == self.progress_lines
         {
+            return;
+        }
+        self.new_output_lines.append(&mut append_output_lines);
+        self.error_lines.append(&mut append_error_lines);
+        self.progress_lines = replace_progress_lines;
+        self.pending_changes = true;
+    }
+
+    fn render_pending_lines(&mut self, terminal_width: usize) -> Result<Vec<Change>> {
+        // Fast path: nothing changed?
+        if !self.pending_changes {
             return Ok(Vec::new());
         }
 
-        let mut changes = Vec::with_capacity(
-            // *2: Every line needs at least 2 `Change`s: Text, and CursorPosition.
-            // +2: 2 Changes for erasing existing lines.
-            (append_output_lines.len() + append_error_lines.len() + replace_progress_lines.len())
-                * 2
-                + 2,
-        );
+        // Every line needs at least 2 `Change`s: Text, and CursorPosition,
+        // plus 2 Changes for erasing existing lines.
+        let line_count =
+            self.new_output_lines.len() + self.error_lines.len() + self.progress_lines.len();
+        let mut changes = Vec::with_capacity(line_count * 2 + 2);
 
         // Step 1: Erase progress, and error.
-        let erase_line_count = self.progress_lines.len() + self.error_lines.len();
-        if erase_line_count > 0 {
-            let dy = -(erase_line_count as isize);
+        if self.erase_row_count > 0 {
+            let dy = -(self.erase_row_count as isize);
             changes.push(Change::CursorPosition {
                 x: Position::Relative(0),
                 y: Position::Relative(dy),
@@ -255,57 +244,53 @@ impl StreamingLines {
         }
 
         // Step 2: Render new output + error + progress
-        for line in append_output_lines
-            .iter()
-            .chain(self.error_lines.iter())
-            .chain(append_error_lines.iter())
-            .chain(replace_progress_lines.iter())
-        {
-            let line = Line::new(0, line);
-            line.render(&mut changes, 0, terminal_width, None)?;
-            changes.push(Change::CursorPosition {
-                x: Position::Absolute(0),
-                y: Position::Relative(1),
-            });
-        }
+        let mut render = |lines| -> Result<_> {
+            let mut row_count = 0;
+            for line in lines {
+                let line = Line::new(0, line);
+                let height = line.height(terminal_width, Wrapping::GraphemeBoundary);
+                for row in 0..height {
+                    line.render_wrapped(
+                        &mut changes,
+                        row,
+                        terminal_width,
+                        Wrapping::GraphemeBoundary,
+                        None,
+                    )?;
+                    changes.push(Change::CursorPosition {
+                        x: Position::Absolute(0),
+                        y: Position::Relative(1),
+                    });
+                }
+                row_count += height;
+            }
+            Ok(row_count)
+        };
+
+        let new_output_row_count = render(self.new_output_lines.iter())?;
+        let error_row_count = render(self.error_lines.iter())?;
+        let progress_row_count = render(self.progress_lines.iter())?;
 
         // Step 3: Update internal state.
-        self.apply_changes(
-            append_output_lines.len(),
-            &[],
-            append_error_lines,
-            replace_progress_lines,
-        );
+        self.past_output_row_count += new_output_row_count;
+        self.new_output_lines.clear();
+        self.erase_row_count = error_row_count + progress_row_count;
+        self.pending_changes = false;
 
         Ok(changes)
     }
 
-    fn render_all(&self, terminal_width: usize) -> Result<Vec<Change>> {
-        ensure!(
-            self.past_output_line_count == 0,
-            "bug: render_all() does not support past_output_line_count > 0"
-        );
-        let mut changes = Vec::with_capacity(self.height() * 2);
+    fn height(&self, terminal_width: usize) -> usize {
+        let mut row_count = self.past_output_row_count;
         for line in self
-            .past_output_lines
+            .new_output_lines
             .iter()
             .chain(self.error_lines.iter())
             .chain(self.progress_lines.iter())
         {
             let line = Line::new(0, line);
-            line.render(&mut changes, 0, terminal_width, None)?;
-            changes.push(Change::CursorPosition {
-                x: Position::Absolute(0),
-                y: Position::Relative(1),
-            });
+            row_count += line.height(terminal_width, Wrapping::GraphemeBoundary);
         }
-        Ok(changes)
-    }
-
-    fn height(&self) -> usize {
-        self.past_output_line_count
-            + self.past_output_lines.len()
-            + self.error_lines.len()
-            + self.progress_lines.len()
+        row_count
     }
 }
