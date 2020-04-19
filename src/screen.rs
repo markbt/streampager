@@ -36,12 +36,12 @@ use termwiz::surface::change::Change;
 use termwiz::surface::{CursorShape, Position};
 
 use crate::command;
-use crate::config::Config;
+use crate::config::{Config, WrappingMode};
 use crate::display::Action;
 use crate::display::Capabilities;
 use crate::event::EventSender;
 use crate::file::File;
-use crate::line::{Line, Wrapping};
+use crate::line::Line;
 use crate::line_cache::LineCache;
 use crate::progress::Progress;
 use crate::prompt::Prompt;
@@ -148,7 +148,7 @@ pub(crate) struct Screen {
     top_line_portion: usize,
 
     /// Wrapping mode.
-    wrapping: Wrapping,
+    wrapping_mode: WrappingMode,
 
     /// The state of the previous render.
     rendered: RenderState,
@@ -202,7 +202,7 @@ impl Screen {
             left: 0,
             top_line: 0,
             top_line_portion: 0,
-            wrapping: Wrapping::Unwrapped,
+            wrapping_mode: config.wrapping_mode,
             rendered: RenderState::default(),
             line_numbers: false,
             line_cache: LineCache::new(LINE_CACHE_SIZE),
@@ -334,7 +334,7 @@ impl Screen {
             while top_line > 0 && remaining > 0 {
                 top_line -= 1;
                 if let Some(line) = self.line_cache.get_or_create(&self.file, top_line, None) {
-                    let line_height = line.height(file_width, self.wrapping);
+                    let line_height = line.height(file_width, self.wrapping_mode);
                     if line_height > remaining {
                         top_line_portion = line_height - remaining;
                         break;
@@ -356,7 +356,7 @@ impl Screen {
                 while scroll_line < end_top_line {
                     if let Some(line) = self.line_cache.get_or_create(&self.file, scroll_line, None)
                     {
-                        let line_height = line.height(file_width, self.wrapping);
+                        let line_height = line.height(file_width, self.wrapping_mode);
                         scroll_by += line_height.saturating_sub(scroll_line_portion);
                         if scroll_by > file_view_height {
                             // We've scrolled an entire screen, just jump straight to the end.
@@ -414,7 +414,7 @@ impl Screen {
                 top_line -= 1;
                 top_line_portion = 0;
                 if let Some(line) = self.line_cache.get_or_create(&self.file, top_line, None) {
-                    let line_height = line.height(file_width, self.wrapping);
+                    let line_height = line.height(file_width, self.wrapping_mode);
                     if line_height > scroll_up {
                         scroll_distance += scroll_up;
                         top_line_portion = line_height - scroll_up;
@@ -436,7 +436,7 @@ impl Screen {
                 let line_height = if let Some(line) =
                     self.line_cache.get_or_create(&self.file, last_line, None)
                 {
-                    line.height(file_width, self.wrapping)
+                    line.height(file_width, self.wrapping_mode)
                 } else {
                     1
                 };
@@ -448,7 +448,7 @@ impl Screen {
                 && (top_line, top_line_portion) < (max_top_line, max_top_line_portion)
             {
                 if let Some(line) = self.line_cache.get_or_create(&self.file, top_line, None) {
-                    let line_height = line.height(file_width, self.wrapping);
+                    let line_height = line.height(file_width, self.wrapping_mode);
                     let line_height_remaining = line_height.saturating_sub(top_line_portion);
                     if line_height_remaining > scroll_down {
                         scroll_distance += scroll_down;
@@ -524,7 +524,7 @@ impl Screen {
             let mut top_portion = render.top_line_portion;
             for file_line in render.top_line..render.file_lines {
                 if let Some(line) = self.line_cache.get_or_create(&self.file, file_line, None) {
-                    let line_height = line.height(file_width, self.wrapping);
+                    let line_height = line.height(file_width, self.wrapping_mode);
                     let visible_line_height = min(
                         line_height.saturating_sub(top_portion),
                         file_view_height - row,
@@ -559,7 +559,7 @@ impl Screen {
             } else {
                 None
             },
-            self.wrapping,
+            self.wrapping_mode,
         );
 
         // Work out what else needs to be refreshed
@@ -768,10 +768,16 @@ impl Screen {
                     end -= lw + 2;
                 }
             }
-            if self.wrapping == Wrapping::Unwrapped {
+            if self.wrapping_mode == WrappingMode::Unwrapped {
                 line.render(changes, start, end, match_index)?;
             } else {
-                line.render_wrapped(changes, portion, end - start, self.wrapping, match_index)?;
+                line.render_wrapped(
+                    changes,
+                    portion,
+                    end - start,
+                    self.wrapping_mode,
+                    match_index,
+                )?;
             }
         } else {
             self.render_blank_line(changes, row);
@@ -964,7 +970,7 @@ impl Screen {
 
     /// Scroll the screen `step` characters to the left.
     fn scroll_left(&mut self, step: usize) {
-        if self.wrapping == Wrapping::Unwrapped && self.left > 0 && step > 0 {
+        if self.wrapping_mode == WrappingMode::Unwrapped && self.left > 0 && step > 0 {
             self.left = self.left.saturating_sub(step);
             self.refresh();
         }
@@ -972,7 +978,7 @@ impl Screen {
 
     /// Scroll the screen `step` characters to the right.
     fn scroll_right(&mut self, step: usize) {
-        if self.wrapping == Wrapping::Unwrapped && step != 0 {
+        if self.wrapping_mode == WrappingMode::Unwrapped && step != 0 {
             self.left = self.left.saturating_add(step);
             self.refresh();
         }
@@ -1047,7 +1053,7 @@ impl Screen {
                 return Ok(Some(Action::Refresh));
             }
             (NONE, Char('\\')) => {
-                self.wrapping = self.wrapping.next_mode();
+                self.wrapping_mode = self.wrapping_mode.next_mode();
                 return Ok(Some(Action::Refresh));
             }
             (NONE, Char(':')) => self.prompt = Some(command::goto()),

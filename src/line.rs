@@ -18,6 +18,7 @@ use termwiz::surface::{change::Change, Position};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::config::WrappingMode;
 use crate::line_drawing;
 use crate::overstrike;
 use crate::search::{trim_trailing_newline, ESCAPE_SEQUENCE};
@@ -33,27 +34,7 @@ const WRAPS_CACHE_SIZE: usize = 4;
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
     spans: Box<[Span]>,
-    wraps: Arc<Mutex<LruCache<(usize, Wrapping), Vec<(usize, usize)>>>>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Wrapping {
-    /// The line is not wrapped.
-    Unwrapped,
-    /// The line is wrapped on grapheme boundaries.
-    GraphemeBoundary,
-    /// The line is wrapped on word boundaries.
-    WordBoundary,
-}
-
-impl Wrapping {
-    pub(crate) fn next_mode(&self) -> Wrapping {
-        match self {
-            Wrapping::Unwrapped => Wrapping::GraphemeBoundary,
-            Wrapping::GraphemeBoundary => Wrapping::WordBoundary,
-            Wrapping::WordBoundary => Wrapping::Unwrapped,
-        }
-    }
+    wraps: Arc<Mutex<LruCache<(usize, WrappingMode), Vec<(usize, usize)>>>>,
 }
 
 /// Style that is being applied.
@@ -737,7 +718,7 @@ impl Line {
         changes: &mut Vec<Change>,
         row: usize,
         width: usize,
-        wrapping: Wrapping,
+        wrapping: WrappingMode,
         search_index: Option<usize>,
     ) -> Result<(), std::io::Error> {
         let (start, end) = {
@@ -765,13 +746,13 @@ impl Line {
     }
 
     /// Returns the start and end pairs for each row of the line if wrapped.
-    fn make_wrap(&self, width: usize, wrapping: Wrapping) -> Vec<(usize, usize)> {
+    fn make_wrap(&self, width: usize, wrapping: WrappingMode) -> Vec<(usize, usize)> {
         let mut rows = Vec::new();
         match wrapping {
-            Wrapping::Unwrapped => {
+            WrappingMode::Unwrapped => {
                 rows.push((0, std::usize::MAX));
             }
-            Wrapping::GraphemeBoundary | Wrapping::WordBoundary => {
+            WrappingMode::GraphemeBoundary | WrappingMode::WordBoundary => {
                 let mut start = 0;
                 let mut position = 0;
                 for span in self.spans.iter() {
@@ -780,7 +761,7 @@ impl Line {
                         start,
                         position,
                         width,
-                        wrapping == Wrapping::WordBoundary,
+                        wrapping == WrappingMode::WordBoundary,
                     );
                     start = new_start;
                     position = new_position;
@@ -794,8 +775,8 @@ impl Line {
     }
 
     /// Returns the number of rows for this line if wrapped at the given width
-    pub(crate) fn height(&self, width: usize, wrapping: Wrapping) -> usize {
-        if wrapping == Wrapping::Unwrapped {
+    pub(crate) fn height(&self, width: usize, wrapping: WrappingMode) -> usize {
+        if wrapping == WrappingMode::Unwrapped {
             return 1;
         }
         let mut wraps = self.wraps.lock().unwrap();
@@ -962,18 +943,18 @@ mod test {
         ];
         let line = Line::new(0, data.as_bytes());
         assert_eq!(
-            line.make_wrap(100, Wrapping::Unwrapped),
+            line.make_wrap(100, WrappingMode::Unwrapped),
             vec![(0, std::usize::MAX)],
         );
         assert_eq!(
-            line.make_wrap(40, Wrapping::GraphemeBoundary),
+            line.make_wrap(40, WrappingMode::GraphemeBoundary),
             vec![(0, 40), (40, 80), (80, 120), (120, 126)],
         );
 
         // The start and end values are positions, not string indices, but since data is pure ASCII
         // they will match.
         let line_wrapped_10: Vec<_> = line
-            .make_wrap(10, Wrapping::WordBoundary)
+            .make_wrap(10, WrappingMode::WordBoundary)
             .iter()
             .map(|(start, end)| &data[*start..*end])
             .collect();
@@ -986,7 +967,7 @@ mod test {
                 .as_bytes(),
         );
         assert_eq!(
-            line.make_wrap(40, Wrapping::GraphemeBoundary),
+            line.make_wrap(40, WrappingMode::GraphemeBoundary),
             vec![(0, 38), (38, 60)],
         );
     }

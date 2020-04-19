@@ -1,9 +1,9 @@
 //! Support for `InterfaceMode::Direct` and other modes using `Direct`.
 
-use crate::config::InterfaceMode;
+use crate::config::{InterfaceMode, WrappingMode};
 use crate::event::{Event, EventStream};
 use crate::file::File;
-use crate::line::{Line, Wrapping};
+use crate::line::Line;
 use crate::progress::Progress;
 use anyhow::Result;
 use std::time::{Duration, Instant};
@@ -248,13 +248,13 @@ impl StreamingLines {
             let mut row_count = 0;
             for line in lines {
                 let line = Line::new(0, line);
-                let height = line.height(terminal_width, Wrapping::GraphemeBoundary);
+                let height = line.height(terminal_width, WrappingMode::GraphemeBoundary);
                 for row in 0..height {
                     line.render_wrapped(
                         &mut changes,
                         row,
                         terminal_width,
-                        Wrapping::GraphemeBoundary,
+                        WrappingMode::GraphemeBoundary,
                         None,
                     )?;
                     changes.push(Change::CursorPosition {
@@ -289,7 +289,7 @@ impl StreamingLines {
             .chain(self.progress_lines.iter())
         {
             let line = Line::new(0, line);
-            row_count += line.height(terminal_width, Wrapping::GraphemeBoundary);
+            row_count += line.height(terminal_width, WrappingMode::GraphemeBoundary);
         }
         row_count
     }

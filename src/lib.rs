@@ -34,7 +34,7 @@ mod screen;
 mod search;
 mod util;
 
-use config::{Config, InterfaceMode};
+use config::{Config, InterfaceMode, WrappingMode};
 use event::EventStream;
 use file::File;
 use progress::Progress;
@@ -213,6 +213,12 @@ impl Pager {
     /// Set how many lines to read ahead.
     pub fn set_read_ahead_lines(&mut self, lines: usize) -> &mut Self {
         self.config.read_ahead_lines = lines;
+        self
+    }
+
+    /// Set default wrapping mode. See [`WrappingMode`] for details.
+    pub fn set_wrapping_mode(&mut self, value: impl Into<WrappingMode>) -> &mut Self {
+        self.config.wrapping_mode = value.into();
         self
     }
 
