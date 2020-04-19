@@ -7,6 +7,7 @@ use anyhow::bail;
 pub use anyhow::Result;
 use std::ffi::OsStr;
 use std::io::Read;
+use termwiz::caps::ColorLevel;
 use termwiz::caps::{Capabilities, ProbeHints};
 use termwiz::terminal::{SystemTerminal, Terminal};
 use vec_map::VecMap;
@@ -66,8 +67,13 @@ pub struct Pager {
 fn termcaps() -> Result<Capabilities> {
     // Get terminal capabilities from the environment, but disable mouse
     // reporting, as we don't want to change the terminal's mouse handling.
-    let caps =
-        Capabilities::new_with_hints(ProbeHints::new_from_env().mouse_reporting(Some(false)))?;
+    // Enable TrueColor support, which is backwards compatible with 16
+    // or 256 colors. Applications can still limit themselves to 16 or
+    // 256 colors if they want.
+    let hints = ProbeHints::new_from_env()
+        .color_level(Some(ColorLevel::TrueColor))
+        .mouse_reporting(Some(false));
+    let caps = Capabilities::new_with_hints(hints)?;
     if cfg!(unix) && caps.terminfo_db().is_none() {
         bail!("terminfo database not found (is $TERM correct?)");
     }
