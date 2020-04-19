@@ -85,6 +85,10 @@ struct RenderState {
     /// The number of lines in the error file.
     error_file_lines: usize,
 
+    /// The last line portion of the error file.  This may be incomplete and needs to be
+    /// re-rendered every time.
+    error_file_last_line_portion: Option<(usize, usize)>,
+
     /// The number of rows in the progress indicator.
     progress_height: usize,
 
@@ -267,16 +271,37 @@ impl Screen {
             Prompt,
             Search,
             Ruler,
-            ErrorFileLine(usize),
+            ErrorFileLinePortion(usize, usize),
             ProgressLine(usize),
         };
 
         let mut row_contents = vec![RowContent::Empty; render.height];
 
+        // Assign the lines of the error file to rows (in reverse order).
+        let error_file_line_portions: Vec<_> = (0..render.error_file_lines)
+            .rev()
+            .flat_map(|line_index| {
+                let line = self
+                    .error_file
+                    .as_ref()
+                    .and_then(|f| f.with_line(line_index, |line| Line::new(line_index, line)));
+                if let Some(line) = line {
+                    let height = line.height(render.width, WrappingMode::WordBoundary);
+                    (0..height)
+                        .rev()
+                        .map(|portion| (line_index, portion))
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            })
+            .take(8)
+            .collect();
+
         // Compute where the overlay will go
         let ruler_height = 1;
         render.progress_height = self.progress.as_ref().map(|f| f.lines()).unwrap_or(0);
-        render.error_file_height = min(render.error_file_lines, 8);
+        render.error_file_height = error_file_line_portions.len();
         render.overlay_height = render.progress_height
             + render.error_file_height
             + ruler_height
@@ -290,10 +315,14 @@ impl Screen {
                 row_contents[row + progress_line] = RowContent::ProgressLine(progress_line);
             }
             row -= render.error_file_height;
-            let error_file_offset = render.error_file_lines - render.error_file_height;
-            for error_file_row in 0..render.error_file_height {
-                row_contents[row + error_file_row] =
-                    RowContent::ErrorFileLine(error_file_offset + error_file_row);
+            render.error_file_last_line_portion = error_file_line_portions.iter().next().cloned();
+            for (error_file_row, error_file_line_portion) in
+                error_file_line_portions.into_iter().rev().enumerate()
+            {
+                row_contents[row + error_file_row] = RowContent::ErrorFileLinePortion(
+                    error_file_line_portion.0,
+                    error_file_line_portion.1,
+                );
             }
             row -= 1;
             row_contents[row] = RowContent::Ruler;
@@ -318,6 +347,7 @@ impl Screen {
             render.overlay_height = self.prompt.is_some() as usize;
             render.progress_height = 0;
             render.error_file_height = 0;
+            render.error_file_last_line_portion = None;
             if self.prompt.is_some() {
                 let prompt_row = render.height.saturating_sub(1);
                 row_contents[prompt_row] = RowContent::Prompt;
@@ -609,6 +639,7 @@ impl Screen {
             }
             if self.rendered.error_file_lines != render.error_file_lines
                 || self.rendered.progress_height != render.progress_height
+                || self.rendered.error_file_last_line_portion != render.error_file_last_line_portion
             {
                 pending_refresh.add_range(bottom_row - render.error_file_height, bottom_row);
             }
@@ -674,8 +705,14 @@ impl Screen {
                     RowContent::Ruler => {
                         self.ruler.bar().render(&mut changes, row, render.width);
                     }
-                    RowContent::ErrorFileLine(line) => {
-                        self.render_error_file_line(&mut changes, row, line, render.width)?;
+                    RowContent::ErrorFileLinePortion(line, portion) => {
+                        self.render_error_file_line(
+                            &mut changes,
+                            row,
+                            line,
+                            portion,
+                            render.width,
+                        )?;
                     }
                     RowContent::ProgressLine(line) => {
                         self.render_progress_line(&mut changes, row, line, render.width)?;
@@ -806,6 +843,7 @@ impl Screen {
         changes: &mut Vec<Change>,
         row: usize,
         line_index: usize,
+        portion: usize,
         width: usize,
     ) -> Result<(), Error> {
         if let Some(error_file) = self.error_file.as_ref() {
@@ -816,7 +854,7 @@ impl Screen {
             changes.push(Change::AllAttributes(CellAttributes::default()));
             if let Some(line) = error_file.with_line(line_index, |line| Line::new(line_index, line))
             {
-                line.render(changes, 0, width, None)?;
+                line.render_wrapped(changes, portion, width, WrappingMode::WordBoundary, None)?;
             } else {
                 changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
             }

@@ -13,7 +13,12 @@ generate_error() {
     local line=1
     while sleep 4
     do
-        echo "this is error line $line"
+        if [[ $((line % 5)) = 0 ]]
+        then
+            echo "this is a very long error line (number $line) which should be sufficiently long to wrap to the next line"
+        else
+            echo "this is error line $line"
+        fi
         line=$((line + 1))
     done
 }
