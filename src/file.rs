@@ -100,6 +100,11 @@ enum FileEvent {
     Reload,
 }
 
+/// Guard to stop reading from a file when it is dropped
+struct FileGuard {
+    meta: Arc<FileMeta>,
+}
+
 /// Default value for `needed_lines`.
 pub(crate) const DEFAULT_NEEDED_LINES: usize = 5000;
 
@@ -530,9 +535,17 @@ pub(crate) struct File {
 
     /// Metadata about the loading of the file.
     meta: Arc<FileMeta>,
+
+    /// Guard to stop loading the file when all references to it are dropped.
+    guard: Arc<FileGuard>,
 }
 
 impl File {
+    fn new(data: FileData, meta: Arc<FileMeta>) -> Self {
+        let guard = Arc::new(FileGuard { meta: meta.clone() });
+        File { data, meta, guard }
+    }
+
     /// Load stream.
     pub(crate) fn new_streamed(
         index: usize,
@@ -542,7 +555,7 @@ impl File {
     ) -> Result<File, Error> {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
         let data = FileData::new_streamed(stream, meta.clone(), event_sender)?;
-        Ok(File { data, meta })
+        Ok(File::new(data, meta))
     }
 
     pub(crate) fn new_file(
@@ -560,7 +573,7 @@ impl File {
             Ok(_) => FileData::new_file(filename, meta.clone(), event_sender)?,
             Err(_) => FileData::new_streamed(file, meta.clone(), event_sender)?,
         };
-        Ok(File { data, meta })
+        Ok(File::new(data, meta))
     }
 
     /// Load a file by memory mapping it if possible.
@@ -580,7 +593,7 @@ impl File {
             Ok(_) => FileData::new_mapped(file, meta.clone(), event_sender)?,
             Err(_) => FileData::new_streamed(file, meta.clone(), event_sender)?,
         };
-        Ok(File { data, meta })
+        Ok(File::new(data, meta))
     }
 
     /// Load the output and error of a command
@@ -635,7 +648,7 @@ impl File {
     ) -> Result<File, Error> {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
         let data = FileData::new_static(data, meta.clone(), event_sender)?;
-        Ok(File { data, meta })
+        Ok(File::new(data, meta))
     }
 
     /// The file's index.
@@ -721,7 +734,7 @@ impl File {
     }
 }
 
-impl Drop for File {
+impl Drop for FileGuard {
     fn drop(&mut self) {
         self.meta.dropped.store(true, Ordering::SeqCst);
         // The thread might be blocked. Wake it up so it can notice the change
