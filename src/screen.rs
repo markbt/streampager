@@ -690,8 +690,8 @@ impl Screen {
             (SHIFT, DownArrow) | (NONE, ApplicationDownArrow) => self.scroll_down_screen(4),
 
             // 1/2 screen
-            (CTRL, Char('D')) => self.scroll_down_screen(2),
-            (CTRL, Char('U')) => self.scroll_down_screen(-2),
+            (CTRL, Char('D')) | (NONE, Char('d')) => self.scroll_down_screen(2),
+            (CTRL, Char('U')) | (NONE, Char('u')) => self.scroll_down_screen(-2),
 
             // 1 screen
             (NONE, PageDown) | (NONE, Char(' ')) | (CTRL, Char('F')) => self.scroll_down_screen(1),
