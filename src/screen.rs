@@ -176,7 +176,7 @@ pub(crate) struct Screen {
     search: Option<Search>,
 
     /// The ruler.
-    ruler: Ruler,
+    ruler: Option<Ruler>,
 
     /// Whether we are following the end of the file.  If `true`, we will scroll down to the
     /// end as new input arrives.
@@ -198,6 +198,12 @@ pub(crate) struct Screen {
 impl Screen {
     /// Create a screen that displays a file.
     pub(crate) fn new(file: File, config: Arc<Config>) -> Screen {
+        let ruler = if config.render_ruler {
+            Some(Ruler::new(file.clone()))
+        } else {
+            None
+        };
+
         Screen {
             error_file: None,
             progress: None,
@@ -214,7 +220,7 @@ impl Screen {
             error: None,
             prompt: None,
             search: None,
-            ruler: Ruler::new(file.clone()),
+            ruler,
             following_end: false,
             pending_absolute_scroll: None,
             pending_relative_scroll: 0,
@@ -581,16 +587,18 @@ impl Screen {
         }
 
         // Update the ruler with the new position.
-        self.ruler.set_position(
-            render.top_line,
-            render.left,
-            if !self.following_end {
-                Some(render.bottom_line)
-            } else {
-                None
-            },
-            self.wrapping_mode,
-        );
+        if let Some(ruler) = &self.ruler {
+            ruler.set_position(
+                render.top_line,
+                render.left,
+                if !self.following_end {
+                    Some(render.bottom_line)
+                } else {
+                    None
+                },
+                self.wrapping_mode,
+            );
+        }
 
         // Work out what else needs to be refreshed
         if pending_refresh != Refresh::All {
@@ -703,7 +711,9 @@ impl Screen {
                         }
                     }
                     RowContent::Ruler => {
-                        self.ruler.bar().render(&mut changes, row, render.width);
+                        if let Some(ruler) = &self.ruler {
+                            ruler.bar().render(&mut changes, row, render.width);
+                        }
                     }
                     RowContent::ErrorFileLinePortion(line, portion) => {
                         self.render_error_file_line(

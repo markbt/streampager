@@ -222,6 +222,12 @@ impl Pager {
         self
     }
 
+    /// Set whether the ruler should be drawn.
+    pub fn set_render_ruler(&mut self, render_ruler: bool) -> &mut Self {
+        self.config.render_ruler = render_ruler;
+        self
+    }
+
     /// Run Stream Pager.
     pub fn run(self) -> Result<()> {
         display::start(

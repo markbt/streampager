@@ -123,6 +123,9 @@ pub struct Config {
 
     /// Specify default wrapping move.
     pub wrapping_mode: WrappingMode,
+
+    /// Whether to render the ruler.
+    pub render_ruler: bool,
 }
 
 impl Config {
@@ -143,6 +146,10 @@ impl Config {
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(crate::file::DEFAULT_NEEDED_LINES),
             wrapping_mode: WrappingMode::Unwrapped,
+            render_ruler: var("SP_RENDER_RULER")
+                .ok()
+                .and_then(|s| parse_bool(&s))
+                .unwrap_or(true),
         }
     }
 }
