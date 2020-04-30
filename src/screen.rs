@@ -35,6 +35,7 @@ use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;
 use termwiz::surface::{CursorShape, Position};
 
+use crate::bindings::{Binding, Keymap};
 use crate::command;
 use crate::config::{Config, WrappingMode};
 use crate::display::Action;
@@ -136,6 +137,9 @@ pub(crate) struct Screen {
     /// The progress indicator potentially being overlayed.
     progress: Option<Progress>,
 
+    /// The keymap in use.
+    keymap: Keymap,
+
     /// The current width.
     width: usize,
 
@@ -197,10 +201,11 @@ pub(crate) struct Screen {
 
 impl Screen {
     /// Create a screen that displays a file.
-    pub(crate) fn new(file: File, config: Arc<Config>) -> Screen {
-        Screen {
+    pub(crate) fn new(file: File, config: Arc<Config>) -> Result<Screen, Error> {
+        Ok(Screen {
             error_file: None,
             progress: None,
+            keymap: crate::keymaps::load(&config.keymap)?,
             width: 0,
             height: 0,
             left: 0,
@@ -221,7 +226,7 @@ impl Screen {
             pending_refresh: Refresh::None,
             config,
             file,
-        }
+        })
     }
 
     /// Resize the screen
@@ -994,16 +999,6 @@ impl Screen {
     fn scroll_down(&mut self, step: usize) {
         self.pending_relative_scroll += step as isize;
         self.following_end = false;
-        /*
-        let mut lines = self.file.lines();
-        if !self.config.scroll_past_eof {
-            let view_height = self.rendered_position.height - self.rendered_overlay_height;
-            lines = lines.max(view_height) - view_height;
-        } else {
-            // Keep at least one line on screen.
-            lines = lines.max(1) - 1;
-        }
-        */
     }
 
     /// Scroll the screen `step` characters to the left.
@@ -1022,11 +1017,28 @@ impl Screen {
         }
     }
 
-    /// Scroll down (screen / n) lines. Negative `n` means scrolling up.
-    fn scroll_down_screen(&mut self, n: isize) {
-        let lines = (self.rendered.height - self.rendered.overlay_height) as isize / n;
-        self.pending_relative_scroll += lines;
-        self.following_end = false;
+    /// Scroll up (screen / n) lines.
+    fn scroll_up_screen_fraction(&mut self, n: usize) {
+        let lines = (self.rendered.height - self.rendered.overlay_height) / n;
+        self.scroll_up(lines);
+    }
+
+    /// Scroll down (screen / n) lines.
+    fn scroll_down_screen_fraction(&mut self, n: usize) {
+        let lines = (self.rendered.height - self.rendered.overlay_height) / n;
+        self.scroll_down(lines);
+    }
+
+    /// Scroll left (screen / n) columns.
+    fn scroll_left_screen_fraction(&mut self, n: usize) {
+        let columns = self.rendered.width / n;
+        self.scroll_left(columns);
+    }
+
+    /// Scroll right (screen / n) columns.
+    fn scroll_right_screen_fraction(&mut self, n: usize) {
+        let columns = self.rendered.width / n;
+        self.scroll_right(columns);
     }
 
     /// Dispatch a keypress to navigate the displayed file.
@@ -1035,88 +1047,63 @@ impl Screen {
         key: KeyEvent,
         event_sender: &EventSender,
     ) -> Result<Option<Action>, Error> {
-        use termwiz::input::{KeyCode::*, Modifiers};
-        const CTRL: Modifiers = Modifiers::CTRL;
-        const NONE: Modifiers = Modifiers::NONE;
-        const SHIFT: Modifiers = Modifiers::SHIFT;
-        match (key.modifiers, key.key) {
-            (NONE, Char('q')) | (CTRL, Char('C')) => {
-                return Ok(Some(Action::Quit));
+        if let Some(binding) = self.keymap.get(&(key.modifiers, key.key)) {
+            use Binding::*;
+            match *binding {
+                Quit => return Ok(Some(Action::Quit)),
+                Refresh => return Ok(Some(Action::Refresh)),
+                Help => return Ok(Some(Action::ShowHelp)),
+                Cancel => {
+                    self.error_file = None;
+                    self.set_search(None);
+                    self.error = None;
+                    self.refresh();
+                    return Ok(Some(Action::ClearOverlay));
+                }
+                PreviousFile => return Ok(Some(Action::PreviousFile)),
+                NextFile => return Ok(Some(Action::NextFile)),
+                ScrollUpLines(n) => self.scroll_up(n),
+                ScrollDownLines(n) => self.scroll_down(n),
+                ScrollUpScreenFraction(n) => self.scroll_up_screen_fraction(n),
+                ScrollDownScreenFraction(n) => self.scroll_down_screen_fraction(n),
+                ScrollToTop => self.scroll_to(0),
+                ScrollToBottom => self.following_end = true,
+                ScrollLeftColumns(n) => self.scroll_left(n),
+                ScrollRightColumns(n) => self.scroll_right(n),
+                ScrollLeftScreenFraction(n) => self.scroll_left_screen_fraction(n),
+                ScrollRightScreenFraction(n) => self.scroll_right_screen_fraction(n),
+                ToggleLineNumbers => {
+                    self.line_numbers = !self.line_numbers;
+                    return Ok(Some(Action::Refresh));
+                }
+                ToggleLineWrapping => {
+                    self.wrapping_mode = self.wrapping_mode.next_mode();
+                    return Ok(Some(Action::Refresh));
+                }
+                PromptGoToLine => self.prompt = Some(command::goto()),
+                PromptSearchFromStart => {
+                    self.prompt = Some(command::search(SearchKind::First, event_sender.clone()))
+                }
+                PromptSearchForwards => {
+                    self.prompt = Some(command::search(
+                        SearchKind::FirstAfter(self.rendered.top_line),
+                        event_sender.clone(),
+                    ))
+                }
+                PromptSearchBackwards => {
+                    self.prompt = Some(command::search(
+                        SearchKind::FirstBefore(self.rendered.bottom_line),
+                        event_sender.clone(),
+                    ))
+                }
+                PreviousMatch => self.move_match(MatchMotion::Previous),
+                NextMatch => self.move_match(MatchMotion::Next),
+                PreviousMatchLine => self.move_match(MatchMotion::PreviousLine),
+                NextMatchLine => self.move_match(MatchMotion::NextLine),
+                FirstMatch => self.move_match(MatchMotion::First),
+                LastMatch => self.move_match(MatchMotion::Last),
+                Unrecognized(_) => {}
             }
-            (NONE, Escape) => {
-                self.error_file = None;
-                self.set_search(None);
-                self.error = None;
-                self.refresh();
-                return Ok(Some(Action::ClearOverlay));
-            }
-
-            // line
-            (NONE, UpArrow) | (NONE, Char('k')) => self.scroll_up(1),
-            (NONE, DownArrow) | (NONE, Enter) | (NONE, Char('j')) => self.scroll_down(1),
-
-            // 1/4 screen
-            (SHIFT, UpArrow) | (NONE, ApplicationUpArrow) => self.scroll_down_screen(-4),
-            (SHIFT, DownArrow) | (NONE, ApplicationDownArrow) => self.scroll_down_screen(4),
-
-            // 1/2 screen
-            (CTRL, Char('D')) => self.scroll_down_screen(2),
-            (CTRL, Char('U')) => self.scroll_down_screen(-2),
-
-            // 1 screen
-            (NONE, PageDown) | (NONE, Char(' ')) | (CTRL, Char('F')) => self.scroll_down_screen(1),
-            (NONE, PageUp) | (NONE, Backspace) | (NONE, Char('b')) | (CTRL, Char('B')) => {
-                self.scroll_down_screen(-1)
-            }
-
-            (NONE, End) | (NONE, Char('G')) => self.following_end = true,
-            (NONE, Home) | (NONE, Char('g')) => self.scroll_to(0),
-
-            (NONE, LeftArrow) => self.scroll_left(4),
-            (NONE, RightArrow) => self.scroll_right(4),
-
-            (SHIFT, LeftArrow) | (NONE, ApplicationLeftArrow) => {
-                self.scroll_left(self.rendered.width / 4)
-            }
-            (SHIFT, RightArrow) | (NONE, ApplicationRightArrow) => {
-                self.scroll_right(self.rendered.width / 4)
-            }
-
-            (NONE, Char('[')) => return Ok(Some(Action::PreviousFile)),
-            (NONE, Char(']')) => return Ok(Some(Action::NextFile)),
-
-            (NONE, Char('?')) | (NONE, Char('h')) => return Ok(Some(Action::ShowHelp)),
-            (NONE, Char('#')) => {
-                self.line_numbers = !self.line_numbers;
-                return Ok(Some(Action::Refresh));
-            }
-            (NONE, Char('\\')) => {
-                self.wrapping_mode = self.wrapping_mode.next_mode();
-                return Ok(Some(Action::Refresh));
-            }
-            (NONE, Char(':')) => self.prompt = Some(command::goto()),
-            (NONE, Char('/')) => {
-                self.prompt = Some(command::search(SearchKind::First, event_sender.clone()));
-            }
-            (NONE, Char('>')) => {
-                self.prompt = Some(command::search(
-                    SearchKind::FirstAfter(self.rendered.top_line),
-                    event_sender.clone(),
-                ));
-            }
-            (NONE, Char('<')) => {
-                self.prompt = Some(command::search(
-                    SearchKind::FirstBefore(self.rendered.bottom_line),
-                    event_sender.clone(),
-                ));
-            }
-            (NONE, Char(',')) => self.move_match(MatchMotion::Previous),
-            (NONE, Char('.')) => self.move_match(MatchMotion::Next),
-            (NONE, Char('p')) | (NONE, Char('N')) => self.move_match(MatchMotion::PreviousLine),
-            (NONE, Char('n')) => self.move_match(MatchMotion::NextLine),
-            (NONE, Char('(')) => self.move_match(MatchMotion::First),
-            (NONE, Char(')')) => self.move_match(MatchMotion::Last),
-            _ => {}
         }
         Ok(Some(Action::Render))
     }

@@ -130,6 +130,9 @@ pub struct Config {
 
     /// Specify default wrapping move.
     pub wrapping_mode: WrappingMode,
+
+    /// Specify the name of the default key map.
+    pub keymap: String,
 }
 
 impl Default for Config {
@@ -139,6 +142,7 @@ impl Default for Config {
             scroll_past_eof: true,
             read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
             wrapping_mode: Default::default(),
+            keymap: String::from("default"),
         }
     }
 }

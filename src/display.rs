@@ -105,22 +105,22 @@ impl Screens {
         mut error_files: VecMap<File>,
         progress: Option<Progress>,
         config: Arc<Config>,
-    ) -> Screens {
+    ) -> Result<Screens, Error> {
         let count = files.len();
         let mut screens = Vec::new();
         for file in files.into_iter() {
             let index = file.index();
-            let mut screen = Screen::new(file, config.clone());
+            let mut screen = Screen::new(file, config.clone())?;
             screen.set_progress(progress.clone());
             screen.set_error_file(error_files.remove(index));
             screens.push(screen);
         }
-        Screens {
+        Ok(Screens {
             screens,
             overlay: None,
             current_index: 0,
             overlay_index: count,
-        }
+        })
     }
 
     /// Get the current screen.
@@ -207,7 +207,7 @@ pub(crate) fn start(
     });
     let config = Arc::new(config);
     let caps = Capabilities::new(term_caps);
-    let mut screens = Screens::new(files, error_files, progress, config.clone());
+    let mut screens = Screens::new(files, error_files, progress, config.clone())?;
     let event_sender = events.sender();
     let render_unique = UniqueInstance::new();
     let refresh_unique = UniqueInstance::new();
@@ -345,7 +345,7 @@ pub(crate) fn start(
                             event_sender.clone(),
                         )?,
                         config.clone(),
-                    );
+                    )?;
                     let size = term.get_screen_size()?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
