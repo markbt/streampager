@@ -120,7 +120,7 @@ impl Pager {
         let files = Vec::new();
         let error_files = VecMap::new();
         let progress = None;
-        let config = Config::from_env();
+        let config = Config::from_config_file().with_env();
 
         Ok(Self {
             term,
