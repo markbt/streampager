@@ -82,6 +82,33 @@ impl From<&str> for InterfaceMode {
     }
 }
 
+/// Specify the default line wrapping mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WrappingMode {
+    /// Lines are not wrapped.
+    Unwrapped,
+    /// Lines are wrapped on grapheme boundaries.
+    GraphemeBoundary,
+    /// Lines are wrapped on word boundaries.
+    WordBoundary,
+}
+
+impl WrappingMode {
+    pub(crate) fn next_mode(&self) -> WrappingMode {
+        match self {
+            WrappingMode::Unwrapped => WrappingMode::GraphemeBoundary,
+            WrappingMode::GraphemeBoundary => WrappingMode::WordBoundary,
+            WrappingMode::WordBoundary => WrappingMode::Unwrapped,
+        }
+    }
+}
+
+impl Default for WrappingMode {
+    fn default() -> Self {
+        Self::Unwrapped
+    }
+}
+
 /// A group of configurations.
 #[derive(Clone, PartialEq, Eq, Default)]
 pub struct Config {
@@ -93,6 +120,9 @@ pub struct Config {
 
     /// Specify how many lines to read ahead.
     pub read_ahead_lines: usize,
+
+    /// Specify default wrapping move.
+    pub wrapping_mode: WrappingMode,
 }
 
 impl Config {
@@ -112,6 +142,7 @@ impl Config {
                 .ok()
                 .and_then(|s| s.parse::<usize>().ok())
                 .unwrap_or(crate::file::DEFAULT_NEEDED_LINES),
+            wrapping_mode: WrappingMode::Unwrapped,
         }
     }
 }

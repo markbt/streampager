@@ -1,6 +1,33 @@
 //! A screen displaying a single file.
+//!
+//! Some terms are used for specific meanings within this file:
+//!
+//! * `line` means a line in the file.
+//! * `row` means a row on the screen.
+//! * `height` means a height in rows.
+//! * `portion` means the portion within a line shown on a single row
+//!    when a line has been wrapped onto multiple rows.
+//!
+//! An example of how these might map to the screen is shown below:
+//!
+//! ```ignore
+//! File                Screen
+//! ====                ======
+//! LINE 0 PORTION 0 \  +------------------+__v top_line = 0, top_line_portion = 1
+//! LINE 0 PORTION 1 \  | LINE 0 PORTION 1 |  ^
+//! LINE 0 PORTION 2    | LINE 0 PORTION 2 |  |
+//! LINE 1              | LINE 1           |  |
+//! LINE 2 PORTION 0 \  | LINE 2 PORTION 0 |  | height = 8
+//! LINE 2 PORTION 1    | LINE 2 PORTION 1 |  |
+//! LINE 3              | LINE 3           |  |
+//! LINE 4 PORTION 0 \  | LINE 4 PORTION 0 |__|___v bottom_line = 4
+//! LINE 4 PORTION 1    |<= RULER ========>|__v___  overlay_height = 1
+//!                     +------------------+      ^
+//!
+//! ```
+
 use anyhow::Error;
-use std::cmp::{max, min, Ordering};
+use std::cmp::{max, min};
 use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
@@ -9,7 +36,7 @@ use termwiz::surface::change::Change;
 use termwiz::surface::{CursorShape, Position};
 
 use crate::command;
-use crate::config::Config;
+use crate::config::{Config, WrappingMode};
 use crate::display::Action;
 use crate::display::Capabilities;
 use crate::event::EventSender;
@@ -25,20 +52,77 @@ use crate::util::number_width;
 
 const LINE_CACHE_SIZE: usize = 1000;
 
-/// The position on the screen of the file that is being displayed.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct ScreenPosition {
-    /// The line at the top of the screen.
-    top: usize,
-
-    /// The column at the left of the screen.
-    left: usize,
-
+/// The state of the previous render.
+#[derive(Clone, Debug, Default)]
+struct RenderState {
     /// The number of columns on screen.
     width: usize,
 
     /// The number of rows on screen.
     height: usize,
+
+    /// The file line at the top of the screen.
+    top_line: usize,
+
+    /// The porition of the file line at the top of the screen.
+    top_line_portion: usize,
+
+    /// The file line at the bottom of the screen.
+    bottom_line: usize,
+
+    /// The column at the left of the screen.
+    left: usize,
+
+    /// The height of the overlay.
+    overlay_height: usize,
+
+    /// The number of lines in the file.
+    file_lines: usize,
+
+    /// The number of searched lines.
+    searched_lines: usize,
+
+    /// The number of lines in the error file.
+    error_file_lines: usize,
+
+    /// The last line portion of the error file.  This may be incomplete and needs to be
+    /// re-rendered every time.
+    error_file_last_line_portion: Option<(usize, usize)>,
+
+    /// The number of rows in the progress indicator.
+    progress_height: usize,
+
+    /// The number of rows showing the error file.
+    error_file_height: usize,
+
+    /// The row the ruler was rendered to.
+    ruler_row: Option<usize>,
+
+    /// The row the prompt was rendered to.
+    prompt_row: Option<usize>,
+
+    /// The row the error message was rendered to.
+    error_row: Option<usize>,
+
+    /// The row search status was rendered to.
+    search_row: Option<usize>,
+
+    /// The start and end row of each file line in view.
+    file_line_rows: Vec<(usize, usize)>,
+}
+
+impl RenderState {
+    /// Returns the start and end row of the file line on the screen, if the
+    /// file line is currently visible.
+    fn file_line_rows(&self, file_line_index: usize) -> Option<(usize, usize)> {
+        if file_line_index >= self.top_line && file_line_index < self.bottom_line {
+            self.file_line_rows
+                .get(file_line_index - self.top_line)
+                .cloned()
+        } else {
+            None
+        }
+    }
 }
 
 /// A screen that is displaying a single file.
@@ -49,33 +133,29 @@ pub(crate) struct Screen {
     /// An error file potentially being overlayed.
     error_file: Option<File>,
 
-    /// Progress currently being shown.
+    /// The progress indicator potentially being overlayed.
     progress: Option<Progress>,
 
-    /// The current position of the file that will be displayed on the next render.
-    position: ScreenPosition,
+    /// The current width.
+    width: usize,
 
-    /// The position of the file that was displayed on the previous render.
-    rendered_position: ScreenPosition,
+    /// The current height.
+    height: usize,
 
-    /// The overlay height on the previous render.
-    rendered_overlay_height: usize,
+    /// The current left-most column when not wrapping
+    left: usize,
 
-    /// The number of lines in the file on the previous render.
-    rendered_lines: usize,
+    /// The current top-most line
+    top_line: usize,
 
-    /// The number of searched lines in the file on the previous render.
-    rendered_searched_lines: usize,
+    /// The top-most portion of the top-most line
+    top_line_portion: usize,
 
-    /// The number of error lines on the previous render.
-    rendered_error_lines: usize,
+    /// Wrapping mode.
+    wrapping_mode: WrappingMode,
 
-    /// The height of the rendered progress.
-    rendered_progress_height: usize,
-
-    /// Whether we are following the end of the file.  If `true`, we will scroll down to the
-    /// end as new input arrives.
-    following_end: bool,
+    /// The state of the previous render.
+    rendered: RenderState,
 
     /// Whether line numbers are being displayed.
     line_numbers: bool,
@@ -98,6 +178,16 @@ pub(crate) struct Screen {
     /// The ruler.
     ruler: Ruler,
 
+    /// Whether we are following the end of the file.  If `true`, we will scroll down to the
+    /// end as new input arrives.
+    following_end: bool,
+
+    /// Scroll to a particular line in the file.
+    pending_absolute_scroll: Option<usize>,
+
+    /// Scroll relative number of rows.
+    pending_relative_scroll: isize,
+
     /// Which parts of the screens need to be re-rendered.
     pending_refresh: Refresh,
 
@@ -111,14 +201,13 @@ impl Screen {
         Screen {
             error_file: None,
             progress: None,
-            position: ScreenPosition::default(),
-            rendered_position: ScreenPosition::default(),
-            rendered_overlay_height: 0,
-            rendered_lines: 0,
-            rendered_searched_lines: 0,
-            rendered_error_lines: 0,
-            rendered_progress_height: 0,
-            following_end: false,
+            width: 0,
+            height: 0,
+            left: 0,
+            top_line: 0,
+            top_line_portion: 0,
+            wrapping_mode: config.wrapping_mode,
+            rendered: RenderState::default(),
             line_numbers: false,
             line_cache: LineCache::new(LINE_CACHE_SIZE),
             search_line_cache: LineCache::new(LINE_CACHE_SIZE),
@@ -126,6 +215,9 @@ impl Screen {
             prompt: None,
             search: None,
             ruler: Ruler::new(file.clone()),
+            following_end: false,
+            pending_absolute_scroll: None,
+            pending_relative_scroll: 0,
             pending_refresh: Refresh::None,
             config,
             file,
@@ -134,16 +226,16 @@ impl Screen {
 
     /// Resize the screen
     pub(crate) fn resize(&mut self, width: usize, height: usize) {
-        if self.position.width != width || self.position.height != height {
-            self.position.width = width;
-            self.position.height = height;
+        if self.width != width || self.height != height {
+            self.width = width;
+            self.height = height;
             self.pending_refresh = Refresh::All;
         }
     }
 
     /// Get the screen width
     pub(crate) fn width(&self) -> usize {
-        self.position.width
+        self.width
     }
 
     /// Renders the part of the screen that has changed.
@@ -153,119 +245,491 @@ impl Screen {
         // Hide the cursor while we render things.
         changes.push(Change::CursorShape(CursorShape::Hidden));
 
+        // Set up the render state.
+        let mut render: RenderState = RenderState::default();
+        render.width = self.width;
+        render.height = self.height;
+        render.file_lines = self.file.lines();
+        render.error_file_lines = self.error_file.as_ref().map(|f| f.lines()).unwrap_or(0);
+        if let Some(search) = self.search.as_ref() {
+            render.searched_lines = search.searched_lines();
+        }
+        let mut pending_refresh = self.pending_refresh.clone();
+        let file_loaded = self.file.loaded();
+        let file_width = if self.line_numbers {
+            render.width - number_width(render.file_lines) - 2
+        } else {
+            render.width
+        };
+
+        #[derive(Copy, Clone, Debug)]
+        enum RowContent {
+            Empty,
+            FileLinePortion(usize, usize),
+            Blank,
+            Error,
+            Prompt,
+            Search,
+            Ruler,
+            ErrorFileLinePortion(usize, usize),
+            ProgressLine(usize),
+        };
+
+        let mut row_contents = vec![RowContent::Empty; render.height];
+
+        // Assign the lines of the error file to rows (in reverse order).
+        let error_file_line_portions: Vec<_> = (0..render.error_file_lines)
+            .rev()
+            .flat_map(|line_index| {
+                let line = self
+                    .error_file
+                    .as_ref()
+                    .and_then(|f| f.with_line(line_index, |line| Line::new(line_index, line)));
+                if let Some(line) = line {
+                    let height = line.height(render.width, WrappingMode::WordBoundary);
+                    (0..height)
+                        .rev()
+                        .map(|portion| (line_index, portion))
+                        .collect()
+                } else {
+                    Vec::new()
+                }
+            })
+            .take(8)
+            .collect();
+
+        // Compute where the overlay will go
+        let ruler_height = 1;
+        render.progress_height = self.progress.as_ref().map(|f| f.lines()).unwrap_or(0);
+        render.error_file_height = error_file_line_portions.len();
+        render.overlay_height = render.progress_height
+            + render.error_file_height
+            + ruler_height
+            + self.search.is_some() as usize
+            + self.prompt.is_some() as usize
+            + self.error.is_some() as usize;
+
+        if render.overlay_height < render.height {
+            let mut row = render.height - render.progress_height;
+            for progress_line in 0..render.progress_height {
+                row_contents[row + progress_line] = RowContent::ProgressLine(progress_line);
+            }
+            row -= render.error_file_height;
+            render.error_file_last_line_portion = error_file_line_portions.iter().next().cloned();
+            for (error_file_row, error_file_line_portion) in
+                error_file_line_portions.into_iter().rev().enumerate()
+            {
+                row_contents[row + error_file_row] = RowContent::ErrorFileLinePortion(
+                    error_file_line_portion.0,
+                    error_file_line_portion.1,
+                );
+            }
+            row -= 1;
+            row_contents[row] = RowContent::Ruler;
+            render.ruler_row = Some(row);
+            if self.search.is_some() {
+                row -= 1;
+                row_contents[row] = RowContent::Search;
+                render.search_row = Some(row);
+            }
+            if self.prompt.is_some() {
+                row -= 1;
+                row_contents[row] = RowContent::Prompt;
+                render.prompt_row = Some(row);
+            }
+            if self.error.is_some() {
+                row -= 1;
+                row_contents[row] = RowContent::Error;
+                render.error_row = Some(row);
+            }
+        } else {
+            // The overlay doesn't fit.  Only show the prompt (if any).
+            render.overlay_height = self.prompt.is_some() as usize;
+            render.progress_height = 0;
+            render.error_file_height = 0;
+            render.error_file_last_line_portion = None;
+            if self.prompt.is_some() {
+                let prompt_row = render.height.saturating_sub(1);
+                row_contents[prompt_row] = RowContent::Prompt;
+                render.prompt_row = Some(prompt_row);
+            }
+        }
+
+        let file_view_height = render.height - render.overlay_height;
+
+        let (end_top_line, end_top_line_portion) = {
+            let mut top_line = render.file_lines;
+            let mut top_line_portion = 0;
+            let mut remaining = file_view_height;
+            while top_line > 0 && remaining > 0 {
+                top_line -= 1;
+                if let Some(line) = self.line_cache.get_or_create(&self.file, top_line, None) {
+                    let line_height = line.height(file_width, self.wrapping_mode);
+                    if line_height > remaining {
+                        top_line_portion = line_height - remaining;
+                        break;
+                    }
+                    remaining -= line_height;
+                }
+            }
+            (top_line, top_line_portion)
+        };
+
+        // Scroll to end
+        if self.following_end {
+            // See if this is a small relative downwards scroll
+            let mut relative_scroll = None;
+            if (end_top_line, end_top_line_portion) >= (self.top_line, self.top_line_portion) {
+                let mut scroll_by = 0;
+                let mut scroll_line = self.top_line;
+                let mut scroll_line_portion = self.top_line_portion;
+                while scroll_line < end_top_line {
+                    if let Some(line) = self.line_cache.get_or_create(&self.file, scroll_line, None)
+                    {
+                        let line_height = line.height(file_width, self.wrapping_mode);
+                        scroll_by += line_height.saturating_sub(scroll_line_portion);
+                        if scroll_by > file_view_height {
+                            // We've scrolled an entire screen, just jump straight to the end.
+                            break;
+                        }
+                    }
+                    scroll_line += 1;
+                    scroll_line_portion = 0;
+                }
+                if scroll_line == end_top_line {
+                    scroll_by += end_top_line_portion.saturating_sub(scroll_line_portion);
+                    relative_scroll = Some(scroll_by);
+                }
+            }
+            if let Some(relative_scroll) = relative_scroll {
+                self.pending_relative_scroll = relative_scroll as isize;
+            } else {
+                self.top_line = end_top_line;
+                self.top_line_portion = end_top_line_portion;
+                pending_refresh.add_range(0, file_view_height);
+            }
+        }
+
+        // Perform pending absolute scroll
+        if let Some(line) = self.pending_absolute_scroll.take() {
+            self.top_line = line;
+            self.top_line_portion = 0;
+            pending_refresh.add_range(0, file_view_height);
+            // Scroll up so that the target line is in the center of the
+            // file view.
+            self.pending_relative_scroll -= (file_view_height / 2) as isize;
+        }
+
+        enum Direction {
+            None,
+            Up,
+            Down,
+        };
+
+        // Perform pending relative scroll
+        let mut scroll_direction = Direction::None;
+        let mut scroll_distance = 0;
+        if self.pending_relative_scroll < 0 {
+            scroll_direction = Direction::Up;
+            let mut scroll_up = (-self.pending_relative_scroll) as usize;
+            let mut top_line = self.top_line;
+            let mut top_line_portion = self.top_line_portion;
+            if top_line_portion > 0 {
+                let top_line_remaining = min(top_line_portion, scroll_up);
+                top_line_portion -= top_line_remaining;
+                scroll_up -= top_line_remaining;
+                scroll_distance += top_line_remaining;
+            }
+            while scroll_up > 0 && top_line > 0 {
+                top_line -= 1;
+                top_line_portion = 0;
+                if let Some(line) = self.line_cache.get_or_create(&self.file, top_line, None) {
+                    let line_height = line.height(file_width, self.wrapping_mode);
+                    if line_height > scroll_up {
+                        scroll_distance += scroll_up;
+                        top_line_portion = line_height - scroll_up;
+                        break;
+                    }
+                    scroll_distance += line_height;
+                    scroll_up -= line_height;
+                }
+            }
+            self.top_line = top_line;
+            self.top_line_portion = top_line_portion;
+        } else if self.pending_relative_scroll > 0 {
+            scroll_direction = Direction::Down;
+            let mut scroll_down = self.pending_relative_scroll as usize;
+            let mut top_line = self.top_line;
+            let mut top_line_portion = self.top_line_portion;
+            let (max_top_line, max_top_line_portion) = if self.config.scroll_past_eof {
+                let last_line = render.file_lines.saturating_sub(1);
+                let line_height = if let Some(line) =
+                    self.line_cache.get_or_create(&self.file, last_line, None)
+                {
+                    line.height(file_width, self.wrapping_mode)
+                } else {
+                    1
+                };
+                (last_line, line_height.saturating_sub(1))
+            } else {
+                (end_top_line, end_top_line_portion)
+            };
+            while scroll_down > 0
+                && (top_line, top_line_portion) < (max_top_line, max_top_line_portion)
+            {
+                if let Some(line) = self.line_cache.get_or_create(&self.file, top_line, None) {
+                    let line_height = line.height(file_width, self.wrapping_mode);
+                    let line_height_remaining = line_height.saturating_sub(top_line_portion);
+                    if line_height_remaining > scroll_down {
+                        scroll_distance += scroll_down;
+                        top_line_portion += scroll_down;
+                        break;
+                    }
+                    scroll_distance += line_height_remaining;
+                    scroll_down -= line_height_remaining;
+                }
+                top_line += 1;
+                top_line_portion = 0;
+            }
+            self.top_line = top_line;
+            self.top_line_portion = top_line_portion;
+        }
+        render.top_line = self.top_line;
+        render.top_line_portion = self.top_line_portion;
+        render.left = self.left;
+        self.pending_relative_scroll = 0;
+
+        // Scroll the region of the screen that had and still has file lines
+        if pending_refresh != Refresh::All {
+            let scroll_start = 0;
+            let scroll_end = min(
+                file_view_height,
+                self.rendered.height - self.rendered.overlay_height,
+            );
+            match scroll_direction {
+                Direction::None => {}
+                _ if scroll_distance > scroll_end - scroll_start => {
+                    pending_refresh.add_range(scroll_start, scroll_end);
+                }
+                Direction::Up if caps.scroll_up => {
+                    changes.push(Change::ScrollRegionDown {
+                        first_row: scroll_start,
+                        region_size: scroll_end - scroll_start,
+                        scroll_count: scroll_distance,
+                    });
+                    pending_refresh.rotate_range_down(
+                        scroll_start,
+                        scroll_end,
+                        scroll_distance,
+                        true,
+                    );
+                }
+                Direction::Down if caps.scroll_down => {
+                    changes.push(Change::ScrollRegionUp {
+                        first_row: scroll_start,
+                        region_size: scroll_end - scroll_start,
+                        scroll_count: scroll_distance,
+                    });
+                    pending_refresh.rotate_range_up(
+                        scroll_start,
+                        scroll_end,
+                        scroll_distance,
+                        true,
+                    );
+                }
+                _ if scroll_distance > 0 => {
+                    pending_refresh.add_range(scroll_start, scroll_end);
+                }
+                _ => {}
+            }
+            if file_view_height > scroll_end {
+                pending_refresh.add_range(scroll_end, file_view_height);
+            }
+        }
+
+        // Assign lines to the rows on screen
+        {
+            let mut file_line_rows = Vec::new();
+            let mut row = 0;
+            let mut top_portion = render.top_line_portion;
+            for file_line in render.top_line..render.file_lines {
+                if let Some(line) = self.line_cache.get_or_create(&self.file, file_line, None) {
+                    let line_height = line.height(file_width, self.wrapping_mode);
+                    let visible_line_height = min(
+                        line_height.saturating_sub(top_portion),
+                        file_view_height - row,
+                    );
+                    for offset in 0..visible_line_height {
+                        row_contents[row + offset] =
+                            RowContent::FileLinePortion(file_line, top_portion + offset);
+                    }
+                    file_line_rows.push((row, row + visible_line_height));
+                    row += visible_line_height;
+                } else {
+                    file_line_rows.push((row, row));
+                }
+                top_portion = 0;
+                if row >= file_view_height {
+                    break;
+                }
+            }
+            render.bottom_line = render.top_line + file_line_rows.len();
+            render.file_line_rows = file_line_rows;
+            for blank_row in row..file_view_height {
+                row_contents[blank_row] = RowContent::Blank;
+            }
+        }
+
+        // Update the ruler with the new position.
         self.ruler.set_position(
-            self.position.top,
-            self.position.left,
-            Some(self.position.top + self.position.height - self.overlay_height())
-                .filter(|_| !self.following_end),
+            render.top_line,
+            render.left,
+            if !self.following_end {
+                Some(render.bottom_line)
+            } else {
+                None
+            },
+            self.wrapping_mode,
         );
 
-        // Work out what needs to be refreshed because we have scrolled.
-        let rendered_height = self.rendered_position.height;
-        let file_height = rendered_height.saturating_sub(self.rendered_overlay_height);
-        if self.pending_refresh != Refresh::All {
-            match self.position.top.cmp(&self.rendered_position.top) {
-                Ordering::Greater => {
-                    if !caps.scroll_up
-                        || self.position.top > self.rendered_position.top + file_height
-                    {
-                        // Can't scroll, or scrolled too far, refresh.
-                        self.pending_refresh.add_range(0, file_height);
-                    } else {
-                        // Moving down the file, so scroll the content up.
-                        let scroll_count = self.position.top - self.rendered_position.top;
-                        changes.push(Change::ScrollRegionUp {
-                            first_row: 0,
-                            region_size: file_height,
-                            scroll_count,
-                        });
-                        self.pending_refresh
-                            .add_range(file_height - scroll_count, file_height);
+        // Work out what else needs to be refreshed
+        if pending_refresh != Refresh::All {
+            // What needs to be refreshed because more of the file was loaded?
+            if !file_loaded {
+                let last_line = self.rendered.file_lines.saturating_sub(1);
+                if let Some((start, end)) = render.file_line_rows(last_line) {
+                    pending_refresh.add_range(start, end);
+                }
+            }
+            if render.file_lines > self.rendered.file_lines {
+                let start_line = max(self.rendered.file_lines, render.top_line);
+                let end_line = min(render.file_lines, render.bottom_line);
+                for file_line in start_line..end_line {
+                    if let Some((start, end)) = render.file_line_rows(file_line) {
+                        pending_refresh.add_range(start, end);
                     }
                 }
-                Ordering::Less => {
-                    if !caps.scroll_down
-                        || self.position.top + file_height < self.rendered_position.top
-                    {
-                        // Can't scroll, or scrolled too far, refresh.
-                        self.pending_refresh.add_range(0, file_height);
-                    } else {
-                        // Moving up the file, so scroll the content down.
-                        let scroll_count = self.rendered_position.top - self.position.top;
-                        changes.push(Change::ScrollRegionDown {
-                            first_row: 0,
-                            region_size: file_height,
-                            scroll_count,
-                        });
-                        self.pending_refresh.add_range(0, scroll_count);
+            }
+
+            // What needs to be refreshed because search has progressed?
+            if let Some(search) = self.search.as_ref() {
+                if render.searched_lines > self.rendered.searched_lines {
+                    let start_line = max(render.top_line, self.rendered.searched_lines);
+                    let end_line = min(render.bottom_line, render.searched_lines);
+                    for line in search.matching_lines(start_line, end_line).into_iter() {
+                        if let Some((start_row, end_row)) = render.file_line_rows(line) {
+                            pending_refresh.add_range(start_row, end_row);
+                        }
                     }
                 }
-                Ordering::Equal => {}
             }
-        }
 
-        // Work out what needs to be refreshed because more of the file has loaded.
-        let file_lines = self.file.lines();
-        if self.pending_refresh != Refresh::All && !self.file.loaded() {
-            // Re-render the last rendered line (as it may have been incomplete, and any new lines)
-            if self.position.top <= file_lines {
-                let start = self.rendered_lines.saturating_sub(self.position.top + 1);
-                let end = file_lines - self.position.top;
-                self.pending_refresh
-                    .add_range(min(start, file_height), min(end, file_height));
-            }
-        }
-
-        // Work out what needs to be refreshed because the search has progressed.
-        let overlay_height = self.overlay_height();
-        let searched_lines = match self.search {
-            Some(ref search) => {
-                let searched_lines = search.searched_lines();
-                let start = max(self.position.top, self.rendered_searched_lines);
-                let end = min(
-                    self.position.top + self.position.height - overlay_height,
-                    searched_lines,
+            // What needs to be refreshed because the overlay got smaller?
+            if file_view_height > self.rendered.height - self.rendered.overlay_height {
+                pending_refresh.add_range(
+                    self.rendered.height - self.rendered.overlay_height,
+                    file_view_height,
                 );
-                for line in search.matching_lines(start, end).into_iter() {
-                    self.pending_refresh
-                        .add_range(line - self.position.top, line - self.position.top + 1);
-                }
-                searched_lines
             }
-            None => 0,
-        };
 
-        // Work out what needs to be refreshed because the overlay has changed size.
-        if self.pending_refresh != Refresh::All && overlay_height != self.rendered_overlay_height {
-            self.pending_refresh.add_range(
-                rendered_height.saturating_sub(max(overlay_height, self.rendered_overlay_height)),
-                rendered_height,
-            );
+            // Which parts of the error file need to be refreshed because they moved?
+            let bottom_row = render.height - render.progress_height;
+            if !file_loaded && self.rendered.error_file_lines > 0 {
+                pending_refresh.add_range(bottom_row - 1, bottom_row);
+            }
+            if self.rendered.error_file_lines != render.error_file_lines
+                || self.rendered.progress_height != render.progress_height
+                || self.rendered.error_file_last_line_portion != render.error_file_last_line_portion
+            {
+                pending_refresh.add_range(bottom_row - render.error_file_height, bottom_row);
+            }
+
+            // Did the ruler move or does it need updating?
+            if let Some(ruler_row) = render.ruler_row {
+                if self.rendered.ruler_row != Some(ruler_row)
+                    || render.top_line != self.rendered.top_line
+                    || render.bottom_line != self.rendered.bottom_line
+                    || render.left != self.rendered.left
+                {
+                    pending_refresh.add_range(ruler_row, ruler_row + 1);
+                }
+            }
+
+            // Did the prompt move?
+            if let Some(prompt_row) = render.prompt_row {
+                if self.rendered.prompt_row != Some(prompt_row) {
+                    pending_refresh.add_range(prompt_row, prompt_row + 1);
+                }
+            }
+
+            // Did the error message move?
+            if let Some(error_row) = render.error_row {
+                if self.rendered.error_row != Some(error_row) {
+                    pending_refresh.add_range(error_row, error_row + 1);
+                }
+            }
         }
 
-        // Render the lines.
-        // TODO: should be possible to do this without collecting the integers,
-        // even though the iterator types are different - they all implement
-        // `Iterator<Item = usize>`.
-        let lines: Vec<usize> = match self.pending_refresh {
-            Refresh::None => Vec::new(),
-            Refresh::Range(s, e) => (s..e).collect(),
-            Refresh::Lines(ref b) => b.iter().collect(),
-            Refresh::All => (0..self.position.height).collect(),
-        };
-        for line in lines.into_iter() {
-            if line < self.position.height - overlay_height {
-                self.render_line(&mut changes, line)?;
-            } else if line < self.position.height {
-                self.render_overlay_line(&mut changes, line)?;
+        // Render pending rows
+        for (row, row_content) in row_contents.into_iter().enumerate() {
+            if pending_refresh.contains(row) {
+                match row_content {
+                    RowContent::Empty => {}
+                    RowContent::FileLinePortion(line, portion) => {
+                        self.render_file_line(
+                            &mut changes,
+                            row,
+                            line,
+                            portion,
+                            render.left,
+                            render.width,
+                        )?;
+                    }
+                    RowContent::Blank => {
+                        self.render_blank_line(&mut changes, row);
+                    }
+                    RowContent::Error => {
+                        self.render_error(&mut changes, row, render.width)?;
+                    }
+                    RowContent::Prompt => {
+                        self.prompt
+                            .as_mut()
+                            .expect("prompt should be visible")
+                            .render(&mut changes, row, render.width)?;
+                    }
+                    RowContent::Search => {
+                        if let Some(search) = self.search.as_mut() {
+                            search.render(&mut changes, row, render.width)?;
+                        }
+                    }
+                    RowContent::Ruler => {
+                        self.ruler.bar().render(&mut changes, row, render.width);
+                    }
+                    RowContent::ErrorFileLinePortion(line, portion) => {
+                        self.render_error_file_line(
+                            &mut changes,
+                            row,
+                            line,
+                            portion,
+                            render.width,
+                        )?;
+                    }
+                    RowContent::ProgressLine(line) => {
+                        self.render_progress_line(&mut changes, row, line, render.width)?;
+                    }
+                }
             }
         }
 
         // Set the cursor to the right position and shape.
-        if let Some(ref prompt) = self.prompt {
+        if let Some(prompt) = self.prompt.as_ref() {
             changes.push(Change::CursorPosition {
                 x: Position::Absolute(prompt.cursor_position()),
-                y: Position::Absolute(self.prompt_line()),
+                y: Position::Absolute(
+                    render
+                        .prompt_row
+                        .expect("prompt row should have been calculated"),
+                ),
             });
             changes.push(Change::CursorShape(CursorShape::Default));
         } else {
@@ -279,119 +743,22 @@ impl Screen {
         changes.push(Change::AllAttributes(CellAttributes::default()));
 
         // Record what we've rendered.
-        self.rendered_position.clone_from(&self.position);
-        self.rendered_overlay_height = overlay_height;
-        self.rendered_lines = file_lines;
-        self.rendered_searched_lines = searched_lines;
-        self.rendered_error_lines = self.error_file.as_ref().map(|f| f.lines()).unwrap_or(0);
-        self.rendered_progress_height = self.progress.as_ref().map(|p| p.lines()).unwrap_or(0);
+        self.rendered = render;
         self.pending_refresh = Refresh::None;
 
         Ok(changes)
     }
 
-    /// Render a single line of the overlay.
-    fn render_overlay_line(
+    /// Renders a line of the file on the screen.
+    fn render_file_line(
         &mut self,
         changes: &mut Vec<Change>,
-        index: usize,
+        row: usize,
+        line_index: usize,
+        portion: usize,
+        left: usize,
+        width: usize,
     ) -> Result<(), Error> {
-        let mut line_index = self.position.height - 1;
-        if index > line_index {
-            // This line is off the bottom of the screen.
-            return Ok(());
-        }
-        if index == line_index && self.overlay_height() == 1 && self.prompt.is_some() {
-            // This is the last line of the screen, and the overlay has been collapsed
-            // to just the prompt because the screen is too short.
-            return self
-                .prompt
-                .as_mut()
-                .unwrap()
-                .render(changes, line_index, self.position.width);
-        }
-        // The remaining parts of the overlay are calculated bottom to top.
-        // Progress indicator.
-        if let Some(ref progress) = self.progress {
-            let progress_height = progress.lines();
-            if index >= line_index + 1 - progress_height {
-                let progress_line = index - (line_index + 1 - progress_height);
-                changes.push(Change::CursorPosition {
-                    x: Position::Absolute(0),
-                    y: Position::Absolute(index),
-                });
-                changes.push(Change::AllAttributes(CellAttributes::default()));
-                if let Some(line) =
-                    progress.with_line(progress_line, |line| Line::new(progress_line, line))
-                {
-                    line.render(changes, 0, self.position.width, None)?;
-                } else {
-                    changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
-                }
-                return Ok(());
-            }
-            line_index -= progress_height;
-        }
-        // Error file.
-        if let Some(ref error_file) = self.error_file {
-            let error_file_height = self.error_file_height();
-            if index >= line_index + 1 - error_file_height {
-                let offset = index - (line_index + 1 - error_file_height);
-                let error_file_line = error_file.lines() - error_file_height + offset;
-                changes.push(Change::CursorPosition {
-                    x: Position::Absolute(0),
-                    y: Position::Absolute(index),
-                });
-                changes.push(Change::AllAttributes(CellAttributes::default()));
-                let line = error_file
-                    .with_line(error_file_line, |line| Line::new(error_file_line, line))
-                    .unwrap();
-                line.render(changes, 0, self.position.width, None)?;
-                return Ok(());
-            }
-            line_index -= error_file_height;
-        }
-        // Ruler
-        if line_index == index {
-            self.ruler
-                .bar()
-                .render(changes, line_index, self.position.width);
-            return Ok(());
-        }
-        line_index -= 1;
-        // Search results.
-        if let Some(ref mut search) = self.search {
-            if line_index == index {
-                return search.render(changes, line_index, self.position.width);
-            }
-            line_index -= 1;
-        }
-        // Prompt.
-        if let Some(ref mut prompt) = self.prompt {
-            if line_index == index {
-                return prompt.render(changes, line_index, self.position.width);
-            }
-            line_index -= 1;
-        }
-        // Error message.
-        if let Some(ref _error) = self.error {
-            if line_index == index {
-                return self.render_error(changes, line_index);
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Renders a line of the file on the screen.
-    fn render_line(&mut self, changes: &mut Vec<Change>, index: usize) -> Result<(), Error> {
-        changes.push(Change::CursorPosition {
-            x: Position::Absolute(0),
-            y: Position::Absolute(index),
-        });
-        changes.push(Change::AllAttributes(CellAttributes::default()));
-        let line_index = self.position.top + index;
-
         let line = match self.search {
             Some(ref search) if search.line_matches(line_index) => self
                 .search_line_cache
@@ -412,40 +779,119 @@ impl Screen {
             });
 
         if let Some(line) = line {
-            let start = self.position.left;
-            let mut end = self.position.left + self.position.width;
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(0),
+                y: Position::Absolute(row),
+            });
+            changes.push(Change::AllAttributes(CellAttributes::default()));
+
+            let start = left;
+            let mut end = left + width;
             if self.line_numbers {
                 let lw = number_width(self.file.lines());
-                if lw + 2 < self.position.width {
+                if lw + 2 < width {
                     changes.push(Change::AllAttributes(
                         CellAttributes::default()
                             .set_foreground(AnsiColor::Black)
                             .set_background(AnsiColor::Silver)
                             .clone(),
                     ));
-                    let s: String = format!(" {:>1$} ", line_index + 1, lw);
-                    changes.push(Change::Text(s));
+                    if portion == 0 {
+                        changes.push(Change::Text(format!(" {:>1$} ", line_index + 1, lw)));
+                    } else {
+                        changes.push(Change::Text(" ".repeat(lw + 2)));
+                    };
                     changes.push(Change::AllAttributes(CellAttributes::default()));
                     end -= lw + 2;
                 }
             }
-            line.render(changes, start, end, match_index)?;
+            if self.wrapping_mode == WrappingMode::Unwrapped {
+                line.render(changes, start, end, match_index)?;
+            } else {
+                line.render_wrapped(
+                    changes,
+                    portion,
+                    end - start,
+                    self.wrapping_mode,
+                    match_index,
+                )?;
+            }
         } else {
-            changes.push(Change::AllAttributes(
-                CellAttributes::default()
-                    .set_foreground(AnsiColor::Navy)
-                    .set_intensity(Intensity::Bold)
-                    .clone(),
-            ));
-            changes.push(Change::Text("~".into()));
-            changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+            self.render_blank_line(changes, row);
+        }
+        Ok(())
+    }
+
+    fn render_blank_line(&self, changes: &mut Vec<Change>, row: usize) {
+        changes.push(Change::CursorPosition {
+            x: Position::Absolute(0),
+            y: Position::Absolute(row),
+        });
+        changes.push(Change::AllAttributes(CellAttributes::default()));
+        changes.push(Change::AllAttributes(
+            CellAttributes::default()
+                .set_foreground(AnsiColor::Navy)
+                .set_intensity(Intensity::Bold)
+                .clone(),
+        ));
+        changes.push(Change::Text("~".into()));
+        changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+    }
+
+    fn render_error_file_line(
+        &mut self,
+        changes: &mut Vec<Change>,
+        row: usize,
+        line_index: usize,
+        portion: usize,
+        width: usize,
+    ) -> Result<(), Error> {
+        if let Some(error_file) = self.error_file.as_ref() {
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(0),
+                y: Position::Absolute(row),
+            });
+            changes.push(Change::AllAttributes(CellAttributes::default()));
+            if let Some(line) = error_file.with_line(line_index, |line| Line::new(line_index, line))
+            {
+                line.render_wrapped(changes, portion, width, WrappingMode::WordBoundary, None)?;
+            } else {
+                changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+            }
+        }
+        Ok(())
+    }
+
+    fn render_progress_line(
+        &mut self,
+        changes: &mut Vec<Change>,
+        row: usize,
+        line_index: usize,
+        width: usize,
+    ) -> Result<(), Error> {
+        if let Some(progress) = self.progress.as_ref() {
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(0),
+                y: Position::Absolute(row),
+            });
+            changes.push(Change::AllAttributes(CellAttributes::default()));
+            if let Some(line) = progress.with_line(line_index, |line| Line::new(line_index, line)) {
+                line.render(changes, 0, width, None)?;
+            } else {
+                changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+            }
         }
         Ok(())
     }
 
     /// Renders the error message at the bottom of the screen.
-    fn render_error(&mut self, changes: &mut Vec<Change>, row: usize) -> Result<(), Error> {
-        if let Some(ref error) = self.error {
+    fn render_error(
+        &mut self,
+        changes: &mut Vec<Change>,
+        row: usize,
+        _width: usize,
+    ) -> Result<(), Error> {
+        if let Some(error) = self.error.as_ref() {
             changes.push(Change::CursorPosition {
                 x: Position::Absolute(0),
                 y: Position::Absolute(row),
@@ -456,6 +902,7 @@ impl Screen {
                     .set_background(AnsiColor::Maroon)
                     .clone(),
             ));
+            // TODO: truncate at width
             changes.push(Change::Text(format!("  {}  ", error)));
             changes.push(Change::AllAttributes(CellAttributes::default()));
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
@@ -465,50 +912,42 @@ impl Screen {
 
     /// Refreshes the ruler on the next render.
     pub(crate) fn refresh_ruler(&mut self) {
-        let ruler_offset = self.error_file_height() + self.progress_height() + 1;
-        if self.position.height > ruler_offset {
-            let ruler_line = self.position.height - ruler_offset;
-            self.pending_refresh.add_range(ruler_line, ruler_line + 1);
+        if let Some(ruler_row) = self.rendered.ruler_row {
+            self.pending_refresh.add_range(ruler_row, ruler_row + 1);
         }
     }
 
     /// Refreshes the prompt on the next render.
     pub(crate) fn refresh_prompt(&mut self) {
-        if self.prompt.is_some() {
-            let prompt_line = self.prompt_line();
-            self.pending_refresh.add_range(prompt_line, prompt_line + 1);
+        if let Some(prompt_row) = self.rendered.prompt_row {
+            self.pending_refresh.add_range(prompt_row, prompt_row + 1);
         }
     }
 
     /// Refreshes the overlay on the next render.
     pub(crate) fn refresh_overlay(&mut self) {
-        let overlay_height = max(self.overlay_height(), self.rendered_overlay_height);
-        let start = self.position.height.saturating_sub(overlay_height);
-        let end = self.position.height;
+        let start = self
+            .rendered
+            .height
+            .saturating_sub(self.rendered.overlay_height);
+        let end = self.rendered.height;
         self.pending_refresh.add_range(start, end);
     }
 
     /// Refreshes the progress section on the next render.
     pub(crate) fn refresh_progress(&mut self) {
-        let progress_height = self.progress_height();
-        if progress_height != self.rendered_progress_height {
-            // Progress height has changed, must re-render the whole overlay.
-            self.refresh_overlay();
-        } else {
-            let progress_height = min(self.position.height, progress_height);
-            let start = self.position.height - progress_height;
-            let end = self.position.height;
-            self.pending_refresh.add_range(start, end);
-        }
+        let start = self
+            .rendered
+            .height
+            .saturating_sub(self.rendered.progress_height);
+        let end = self.height;
+        self.pending_refresh.add_range(start, end);
     }
 
     /// Refresh a file line.
     pub(crate) fn refresh_file_line(&mut self, file_line_index: usize) {
-        if file_line_index >= self.position.top
-            && file_line_index < self.position.top + self.position.height - self.overlay_height()
-        {
-            let line_index = file_line_index - self.position.top;
-            self.pending_refresh.add_range(line_index, line_index + 1);
+        if let Some((start_row, end_row)) = self.rendered.file_line_rows(file_line_index) {
+            self.pending_refresh.add_range(start_row, end_row);
         }
     }
 
@@ -525,10 +964,7 @@ impl Screen {
     pub(crate) fn refresh_matched_lines(&mut self) {
         if let Some(ref search) = self.search {
             for line in search
-                .matching_lines(
-                    self.position.top,
-                    self.position.top + self.position.height - self.overlay_height(),
-                )
+                .matching_lines(self.rendered.top_line, self.rendered.bottom_line)
                 .into_iter()
             {
                 self.refresh_file_line(line);
@@ -541,78 +977,24 @@ impl Screen {
         self.pending_refresh = Refresh::All;
     }
 
-    /// Returns the number of overlay rows.
-    fn overlay_height(&self) -> usize {
-        let overlay_height = 1
-            + self.prompt.is_some() as usize
-            + self.search.is_some() as usize
-            + self.error.is_some() as usize
-            + self.error_file_height()
-            + self.progress_height();
-        if overlay_height < self.position.height {
-            overlay_height
-        } else {
-            // The screen is too short to display the overlay, so just show the
-            // prompt.
-            self.prompt.is_some() as usize
-        }
-    }
-
-    /// Returns the line number of the prompt.
-    fn prompt_line(&self) -> usize {
-        if self.overlay_height() > 1 {
-            self.position.height
-                - self.error_file_height()
-                - self.progress_height()
-                - 2
-                - self.search.is_some() as usize
-        } else {
-            self.position.height - 1
-        }
-    }
-
-    /// Returns the number of lines of the error file to display
-    fn error_file_height(&self) -> usize {
-        self.error_file
-            .as_ref()
-            .map(|f| min(f.lines(), 8))
-            .unwrap_or(0)
-    }
-
-    /// Returns the number of progress lines to display
-    fn progress_height(&self) -> usize {
-        self.progress.as_ref().map(|f| f.lines()).unwrap_or(0)
-    }
-
     /// Scrolls to the given line number.
     pub(crate) fn scroll_to(&mut self, line: usize) {
-        let half_height = (self.position.height - self.overlay_height() - 1) / 2;
-        if line < half_height {
-            self.scroll_up(self.position.top);
-        } else if self.position.top > line - half_height {
-            self.scroll_up(self.position.top - (line - half_height));
-        } else if self.position.top < line - half_height {
-            self.scroll_down(line - half_height - self.position.top);
-        }
+        self.pending_absolute_scroll = Some(line);
+        self.pending_relative_scroll = 0;
+        self.following_end = false;
     }
 
     /// Scroll the screen `step` characters up.
     fn scroll_up(&mut self, step: usize) {
-        let mut step = step;
+        self.pending_relative_scroll -= step as isize;
         self.following_end = false;
-        if self.position.top > step {
-            self.position.top -= step;
-        } else {
-            step = self.position.top;
-            self.position.top = 0;
-        }
-        self.pending_refresh.rotate_range_down(step);
-        self.refresh_overlay();
     }
 
     /// Scroll the screen `step` characters down.
     fn scroll_down(&mut self, step: usize) {
+        self.pending_relative_scroll += step as isize;
         self.following_end = false;
+        /*
         let mut lines = self.file.lines();
         if !self.config.scroll_past_eof {
             let view_height = self.rendered_position.height - self.rendered_overlay_height;
@@ -621,42 +1003,30 @@ impl Screen {
             // Keep at least one line on screen.
             lines = lines.max(1) - 1;
         }
-        let step = step.min(lines.max(self.position.top) - self.position.top);
-        self.position.top += step;
-        self.pending_refresh.rotate_range_up(step);
-        self.refresh_overlay();
+        */
     }
 
     /// Scroll the screen `step` characters to the left.
     fn scroll_left(&mut self, step: usize) {
-        let mut step = step;
-        if self.position.left > step {
-            self.position.left -= step;
-        } else {
-            step = self.position.left;
-            self.position.left = 0;
-        }
-        if step != 0 {
+        if self.wrapping_mode == WrappingMode::Unwrapped && self.left > 0 && step > 0 {
+            self.left = self.left.saturating_sub(step);
             self.refresh();
         }
     }
 
     /// Scroll the screen `step` characters to the right.
     fn scroll_right(&mut self, step: usize) {
-        self.position.left += step;
-        if step != 0 {
+        if self.wrapping_mode == WrappingMode::Unwrapped && step != 0 {
+            self.left = self.left.saturating_add(step);
             self.refresh();
         }
     }
 
     /// Scroll down (screen / n) lines. Negative `n` means scrolling up.
     fn scroll_down_screen(&mut self, n: isize) {
-        let lines = (self.rendered_position.height - self.rendered_overlay_height) as isize / n;
-        if n >= 0 {
-            self.scroll_down((lines as usize).max(1));
-        } else {
-            self.scroll_up((lines.abs() as usize).max(1));
-        }
+        let lines = (self.rendered.height - self.rendered.overlay_height) as isize / n;
+        self.pending_relative_scroll += lines;
+        self.following_end = false;
     }
 
     /// Dispatch a keypress to navigate the displayed file.
@@ -700,16 +1070,16 @@ impl Screen {
             }
 
             (NONE, End) | (NONE, Char('G')) => self.following_end = true,
-            (NONE, Home) | (NONE, Char('g')) => self.scroll_up(self.position.top),
+            (NONE, Home) | (NONE, Char('g')) => self.scroll_to(0),
 
             (NONE, LeftArrow) => self.scroll_left(4),
             (NONE, RightArrow) => self.scroll_right(4),
 
             (SHIFT, LeftArrow) | (NONE, ApplicationLeftArrow) => {
-                self.scroll_left(self.position.width / 4)
+                self.scroll_left(self.rendered.width / 4)
             }
             (SHIFT, RightArrow) | (NONE, ApplicationRightArrow) => {
-                self.scroll_right(self.position.width / 4)
+                self.scroll_right(self.rendered.width / 4)
             }
 
             (NONE, Char('[')) => return Ok(Some(Action::PreviousFile)),
@@ -720,21 +1090,23 @@ impl Screen {
                 self.line_numbers = !self.line_numbers;
                 return Ok(Some(Action::Refresh));
             }
+            (NONE, Char('\\')) => {
+                self.wrapping_mode = self.wrapping_mode.next_mode();
+                return Ok(Some(Action::Refresh));
+            }
             (NONE, Char(':')) => self.prompt = Some(command::goto()),
             (NONE, Char('/')) => {
                 self.prompt = Some(command::search(SearchKind::First, event_sender.clone()));
             }
             (NONE, Char('>')) => {
                 self.prompt = Some(command::search(
-                    SearchKind::FirstAfter(self.position.top),
+                    SearchKind::FirstAfter(self.rendered.top_line),
                     event_sender.clone(),
                 ));
             }
             (NONE, Char('<')) => {
                 self.prompt = Some(command::search(
-                    SearchKind::FirstBefore(
-                        self.position.top + self.position.height - self.overlay_height(),
-                    ),
+                    SearchKind::FirstBefore(self.rendered.bottom_line),
                     event_sender.clone(),
                 ));
             }
@@ -779,18 +1151,6 @@ impl Screen {
 
     /// Dispatch an animation timeout, updating for the next animation frame.
     pub(crate) fn dispatch_animation(&mut self) -> Result<Option<Action>, Error> {
-        if self.following_end {
-            let lines = self.file.lines();
-            let new_top = if lines <= self.rendered_position.height - self.rendered_overlay_height {
-                0
-            } else {
-                lines - (self.rendered_position.height - self.rendered_overlay_height)
-            };
-            if self.position.top != new_top {
-                self.position.top = new_top;
-                self.refresh_ruler();
-            }
-        }
         if !self.file.loaded() {
             self.refresh_ruler();
         }
@@ -803,7 +1163,7 @@ impl Screen {
             self.refresh_overlay();
         }
         if let Some(ref error_file) = self.error_file {
-            if error_file.lines() != self.rendered_error_lines {
+            if error_file.lines() != self.rendered.error_file_lines {
                 self.refresh_overlay();
             }
         }
@@ -866,8 +1226,7 @@ impl Screen {
     /// Load more lines from a stream.
     pub(crate) fn maybe_load_more(&mut self) {
         // Fetch 1 screen + config.read_ahead_lines.
-        let needed_lines =
-            self.position.top + self.position.height * 2 + self.config.read_ahead_lines;
+        let needed_lines = self.rendered.bottom_line + self.height + self.config.read_ahead_lines;
         self.file.set_needed_lines(needed_lines);
     }
 }

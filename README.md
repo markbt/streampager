@@ -116,6 +116,7 @@ is equivalent to the previous example.
 ### Presentation
 
 * **`#`**: Toggle display of line numbers.
+* **`\`**: Toggle line and word wrapping.
 
 ### Searching
 

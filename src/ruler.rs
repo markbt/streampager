@@ -8,6 +8,7 @@ use termwiz::surface::change::Change;
 use unicode_width::UnicodeWidthStr;
 
 use crate::bar::{Bar, BarItem, BarString, BarStyle};
+use crate::config::WrappingMode;
 use crate::file::File;
 use crate::util;
 
@@ -41,7 +42,13 @@ impl Ruler {
         &self.ruler_bar
     }
 
-    pub(crate) fn set_position(&self, top: usize, left: usize, bottom: Option<usize>) {
+    pub(crate) fn set_position(
+        &self,
+        top: usize,
+        left: usize,
+        bottom: Option<usize>,
+        wrapping_mode: WrappingMode,
+    ) {
         self.position.top.store(top, Ordering::SeqCst);
         self.position.left.store(left, Ordering::SeqCst);
         let (bottom, following_end) = match bottom {
@@ -49,6 +56,14 @@ impl Ruler {
             None => (0, true),
         };
         self.position.bottom.store(bottom, Ordering::SeqCst);
+        self.position.line_wrapping.store(
+            wrapping_mode == WrappingMode::GraphemeBoundary,
+            Ordering::SeqCst,
+        );
+        self.position.word_wrapping.store(
+            wrapping_mode == WrappingMode::WordBoundary,
+            Ordering::SeqCst,
+        );
         self.loading
             .following_end
             .store(following_end, Ordering::SeqCst);
@@ -86,6 +101,8 @@ struct PositionIndicator {
     top: AtomicUsize,
     left: AtomicUsize,
     bottom: AtomicUsize,
+    line_wrapping: AtomicBool,
+    word_wrapping: AtomicBool,
 }
 
 impl PositionIndicator {
@@ -95,6 +112,8 @@ impl PositionIndicator {
             top: AtomicUsize::new(0),
             left: AtomicUsize::new(0),
             bottom: AtomicUsize::new(0),
+            line_wrapping: AtomicBool::new(false),
+            word_wrapping: AtomicBool::new(false),
         }
     }
 }
@@ -104,12 +123,16 @@ impl BarItem for PositionIndicator {
         let top = self.top.load(Ordering::SeqCst);
         let left = self.left.load(Ordering::SeqCst);
         let bottom = self.bottom.load(Ordering::SeqCst);
+        let line_wrapping = self.line_wrapping.load(Ordering::SeqCst);
+        let word_wrapping = self.word_wrapping.load(Ordering::SeqCst);
         let mut width = 0;
         let file_lines = self.file.lines();
         let nw = max(3, util::number_width(max(file_lines, max(bottom, top + 1))));
 
-        // Indicate horizontal position as "+N" if we are not at the very left.
-        if left > 1 {
+        if line_wrapping || word_wrapping {
+            width += 6;
+        } else if left > 1 {
+            // Indicate horizontal position as "+N" if we are not at the very left.
             width += util::number_width(left + 1) + 3;
         }
 
@@ -128,11 +151,17 @@ impl BarItem for PositionIndicator {
         let top = self.top.load(Ordering::SeqCst);
         let left = self.left.load(Ordering::SeqCst);
         let bottom = self.bottom.load(Ordering::SeqCst);
+        let line_wrapping = self.line_wrapping.load(Ordering::SeqCst);
+        let word_wrapping = self.word_wrapping.load(Ordering::SeqCst);
         let file_lines = self.file.lines();
         let mut out = String::new();
         let nw = max(3, util::number_width(max(file_lines, max(bottom, top + 1))));
 
-        if left > 0 {
+        if line_wrapping {
+            write!(out, "wrap  ").expect("writes to strings should not fail");
+        } else if word_wrapping {
+            write!(out, "word  ").expect("writes to strings should not fail");
+        } else if left > 0 {
             write!(out, "{:+}  ", left + 1,).expect("writes to strings should not fail");
         }
 

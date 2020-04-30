@@ -16,7 +16,7 @@ use std::time::Duration;
 use termwiz::istty::IsTty;
 use vec_map::VecMap;
 
-use streampager::{config::InterfaceMode, Pager};
+use streampager::{config::InterfaceMode, config::WrappingMode, Pager};
 
 mod app;
 
@@ -71,6 +71,10 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
         }
     };
     pager.set_interface_mode(mode);
+
+    if args.is_present("no_alternate") {
+        pager.set_wrapping_mode(WrappingMode::GraphemeBoundary);
+    }
 
     let mut specs = VecMap::new();
 

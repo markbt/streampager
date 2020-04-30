@@ -8,80 +8,99 @@ pub(crate) enum Refresh {
     /// Nothing to render.
     None,
 
-    /// The range of lines from `start`..`end` must be rendered.
-    Range(usize, usize),
-
-    /// The lines in the bitset must be rendered.
-    Lines(BitSet),
+    /// The rows in the bitset must be rendered.
+    Rows(BitSet),
 
     /// The whole screen must be rendered.
     All,
 }
 
+fn fill_range(b: &mut BitSet, start: usize, end: usize, fill: bool) {
+    if fill {
+        b.extend(start..end);
+    } else {
+        for row in start..end {
+            b.remove(row);
+        }
+    }
+}
+
 impl Refresh {
-    /// Add a range of lines to the lines that must be rendered.
+    /// Add a range of rows to the rows that must be rendered.
     pub(crate) fn add_range(&mut self, start: usize, end: usize) {
         match *self {
-            Refresh::None => *self = Refresh::Range(start, end),
-            Refresh::Range(s, e) => {
-                if start > e || s > end {
-                    let mut b = BitSet::new();
-                    b.extend(s..e);
-                    b.extend(start..end);
-                    *self = Refresh::Lines(b);
-                } else {
-                    *self = Refresh::Range(min(start, s), max(end, e));
-                }
+            Refresh::None => {
+                let mut b = BitSet::new();
+                b.extend(start..end);
+                *self = Refresh::Rows(b);
             }
-            Refresh::Lines(ref mut b) => {
+            Refresh::Rows(ref mut b) => {
                 b.extend(start..end);
             }
             Refresh::All => {}
         }
     }
 
-    /// Rotate the range of lines upwards (towards 0).  Lines that roll past
-    /// 0 are dropped.
-    pub(crate) fn rotate_range_up(&mut self, step: usize) {
+    /// Rotate the range of rows between start and end upwards (towards 0).  Rows that roll past
+    /// the start are dropped.  New rows introduced are filled with the fill value.
+    pub(crate) fn rotate_range_up(&mut self, start: usize, end: usize, step: usize, fill: bool) {
         match *self {
-            Refresh::None | Refresh::All => {}
-            Refresh::Range(s, e) => {
-                if step > e {
-                    *self = Refresh::None;
-                } else {
-                    *self = Refresh::Range(s.saturating_sub(step), e - step);
+            Refresh::All => {}
+            Refresh::None => {
+                if fill {
+                    let mut b = BitSet::new();
+                    let mid = max(start, end.saturating_sub(step));
+                    b.extend(mid..end);
+                    *self = Refresh::Rows(b);
                 }
             }
-            Refresh::Lines(ref b) => {
-                let mut new_b = BitSet::new();
-                for line in b.iter() {
-                    if line >= step {
-                        new_b.insert(line - step);
+            Refresh::Rows(ref mut b) => {
+                let mid = max(start, end.saturating_sub(step));
+                for row in start..mid {
+                    if b.contains(row + step) {
+                        b.insert(row);
+                    } else {
+                        b.remove(row);
                     }
                 }
-                if new_b.is_empty() {
-                    *self = Refresh::None;
-                } else {
-                    *self = Refresh::Lines(new_b)
-                }
+                fill_range(b, mid, end, fill);
             }
         }
     }
 
-    /// Rotate the range of lines downwards (away from 0).
-    pub(crate) fn rotate_range_down(&mut self, step: usize) {
+    /// Rotate the range of rows between start and end downwards (away from 0).  Rows that roll
+    /// past the end are dropped.  New rows introduced are filled with the fill value.
+    pub(crate) fn rotate_range_down(&mut self, start: usize, end: usize, step: usize, fill: bool) {
         match *self {
-            Refresh::None | Refresh::All => {}
-            Refresh::Range(s, e) => {
-                *self = Refresh::Range(s + step, e + step);
-            }
-            Refresh::Lines(ref b) => {
-                let mut new_b = BitSet::new();
-                for line in b.iter() {
-                    new_b.insert(line + step);
+            Refresh::None => {
+                if fill {
+                    let mut b = BitSet::new();
+                    let mid = min(start.saturating_add(step), end);
+                    b.extend(start..mid);
+                    *self = Refresh::Rows(b);
                 }
-                *self = Refresh::Lines(new_b)
             }
+            Refresh::Rows(ref mut b) => {
+                let mid = min(start.saturating_add(step), end);
+                for row in (mid..end).rev() {
+                    if b.contains(row - step) {
+                        b.insert(row);
+                    } else {
+                        b.remove(row);
+                    }
+                }
+                fill_range(b, start, mid, fill);
+            }
+            Refresh::All => {}
+        }
+    }
+
+    /// Does the range contain the given orow
+    pub(crate) fn contains(&self, row: usize) -> bool {
+        match *self {
+            Refresh::None => false,
+            Refresh::Rows(ref b) => b.contains(row),
+            Refresh::All => true,
         }
     }
 }
