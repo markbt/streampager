@@ -1,12 +1,13 @@
 //! Key bindings.
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use termwiz::input::{KeyCode, Modifiers};
 
 /// A key binding category.
 ///
 /// Key bindings are listed by category in the help screen.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Category {
     /// Uncategorized actions.
     None,
@@ -24,8 +25,34 @@ pub enum Category {
     Searching,
 }
 
+impl Category {
+    pub(crate) fn categories() -> impl Iterator<Item = Category> {
+        [
+            Category::General,
+            Category::Navigation,
+            Category::Presentation,
+            Category::Searching,
+            Category::None,
+        ]
+        .iter()
+        .cloned()
+    }
+}
+
+impl std::fmt::Display for Category {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Category::None => f.write_str("Other"),
+            Category::General => f.write_str("General"),
+            Category::Navigation => f.write_str("Navigation"),
+            Category::Presentation => f.write_str("Presentation"),
+            Category::Searching => f.write_str("Searching"),
+        }
+    }
+}
+
 /// An action that may be bound to a key.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Binding {
     /// Quit the pager.
     Quit,
@@ -149,4 +176,90 @@ impl Binding {
     }
 }
 
-pub(crate) type Keymap = HashMap<(Modifiers, KeyCode), Binding>;
+impl std::fmt::Display for Binding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Binding::*;
+        match *self {
+            Quit => write!(f, "Quit"),
+            Refresh => write!(f, "Refresh the screen"),
+            Help => write!(f, "Show this help"),
+            Cancel => write!(f, "Close help or any open prompt"),
+            PreviousFile => write!(f, "Switch to the previous file"),
+            NextFile => write!(f, "Switch to the next file"),
+            ScrollUpLines(1) => write!(f, "Scroll up"),
+            ScrollUpLines(n) => write!(f, "Scroll up {} lines", n),
+            ScrollDownLines(1) => write!(f, "Scroll down"),
+            ScrollDownLines(n) => write!(f, "Scroll down {} lines", n),
+            ScrollUpScreenFraction(1) => write!(f, "Scroll up one screen"),
+            ScrollUpScreenFraction(n) => write!(f, "Scroll up 1/{} screen", n),
+            ScrollDownScreenFraction(1) => write!(f, "Scroll down one screen"),
+            ScrollDownScreenFraction(n) => write!(f, "Scroll down 1/{} screen", n),
+            ScrollToTop => write!(f, "Move to the start of the file"),
+            ScrollToBottom => write!(f, "Move to and follow the end of the file"),
+            ScrollLeftColumns(1) => write!(f, "Scroll left"),
+            ScrollLeftColumns(n) => write!(f, "Scroll left {} columns", n),
+            ScrollRightColumns(1) => write!(f, "Scroll right"),
+            ScrollRightColumns(n) => write!(f, "Scroll right {} columns", n),
+            ScrollLeftScreenFraction(1) => write!(f, "Scroll left one screen"),
+            ScrollLeftScreenFraction(n) => write!(f, "Scroll left 1/{} screen", n),
+            ScrollRightScreenFraction(1) => write!(f, "Scroll right one screen"),
+            ScrollRightScreenFraction(n) => write!(f, "Scroll right 1/{} screen", n),
+            ToggleLineNumbers => write!(f, "Toggle line numbers"),
+            ToggleLineWrapping => write!(f, "Cycle through line wrapping modes"),
+            PromptGoToLine => write!(f, "Go to position in file"),
+            PromptSearchFromStart => write!(f, "Search from the start of the file"),
+            PromptSearchForwards => write!(f, "Search forwards"),
+            PromptSearchBackwards => write!(f, "Search backwards"),
+            PreviousMatch => write!(f, "Move to the previous match"),
+            NextMatch => write!(f, "Move to the next match"),
+            PreviousMatchLine => write!(f, "Move to the previous matching line"),
+            NextMatchLine => write!(f, "Move the the next matching line"),
+            FirstMatch => write!(f, "Move to the first match"),
+            LastMatch => write!(f, "Move to the last match"),
+            Unrecognized(ref s) => write!(f, "Unrecognized binding ({})", s),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct Keybind {
+    pub(crate) binding: Binding,
+
+    pub(crate) visible: bool,
+}
+
+pub(crate) struct Keymap {
+    /// Map of bindings from keys.
+    bindings: HashMap<(Modifiers, KeyCode), Binding>,
+
+    /// Map of visible keys from bindings.
+    keys: IndexMap<Binding, Vec<(Modifiers, KeyCode)>>,
+}
+
+impl<I: IntoIterator<Item = &'static ((Modifiers, KeyCode), Keybind)>> From<I> for Keymap {
+    fn from(iter: I) -> Keymap {
+        let iter = iter.into_iter();
+        let size_hint = iter.size_hint();
+        let mut bindings = HashMap::with_capacity(size_hint.0);
+        let mut keys = IndexMap::with_capacity(size_hint.0);
+        for &((modifiers, keycode), ref keybind) in iter {
+            bindings.insert((modifiers, keycode), keybind.binding.clone());
+            if keybind.visible {
+                keys.entry(keybind.binding.clone())
+                    .or_insert_with(Vec::new)
+                    .push((modifiers, keycode));
+            }
+        }
+        Keymap { bindings, keys }
+    }
+}
+
+impl Keymap {
+    pub(crate) fn get(&self, modifiers: Modifiers, keycode: KeyCode) -> Option<&Binding> {
+        self.bindings.get(&(modifiers, keycode))
+    }
+
+    pub(crate) fn iter_keys(&self) -> impl Iterator<Item = (&Binding, &Vec<(Modifiers, KeyCode)>)> {
+        self.keys.iter()
+    }
+}

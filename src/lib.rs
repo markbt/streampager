@@ -24,6 +24,7 @@ mod direct;
 mod display;
 mod event;
 mod file;
+mod help;
 mod keymaps;
 mod line;
 mod line_cache;

@@ -16,6 +16,7 @@ use crate::config::Config;
 use crate::direct;
 use crate::event::{Event, EventStream, UniqueInstance};
 use crate::file::File;
+use crate::help::help_text;
 use crate::progress::Progress;
 use crate::screen::Screen;
 use crate::search::SearchKind;
@@ -337,11 +338,12 @@ pub(crate) fn start(
                 }
                 Action::ShowHelp => {
                     let overlay_index = screens.overlay_index + 1;
+                    let screen = screens.current();
                     let mut screen = Screen::new(
                         File::new_static(
                             overlay_index,
                             "HELP",
-                            include_bytes!("help.txt"),
+                            help_text(screen.keymap())?.into_bytes(),
                             event_sender.clone(),
                         )?,
                         config.clone(),

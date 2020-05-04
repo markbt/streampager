@@ -243,6 +243,11 @@ impl Screen {
         self.width
     }
 
+    /// Get the screen's keymap
+    pub(crate) fn keymap(&self) -> &Keymap {
+        &self.keymap
+    }
+
     /// Renders the part of the screen that has changed.
     pub(crate) fn render(&mut self, caps: &Capabilities) -> Result<Vec<Change>, Error> {
         let mut changes = Vec::new();
@@ -1047,7 +1052,7 @@ impl Screen {
         key: KeyEvent,
         event_sender: &EventSender,
     ) -> Result<Option<Action>, Error> {
-        if let Some(binding) = self.keymap.get(&(key.modifiers, key.key)) {
+        if let Some(binding) = self.keymap.get(key.modifiers, key.key) {
             use Binding::*;
             match *binding {
                 Quit => return Ok(Some(Action::Quit)),

@@ -47,7 +47,7 @@ enum FileData {
     Empty,
 
     /// Static content.
-    Static { data: &'static [u8] },
+    Static { data: Arc<Cow<'static, [u8]>> },
 }
 
 /// Metadata about a file that is being loaded.
@@ -441,11 +441,13 @@ impl FileData {
     ///
     /// Returns `FileData` containing the static data.
     fn new_static(
-        data: &'static [u8],
+        data: impl Into<Cow<'static, [u8]>>,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
     ) -> Result<FileData, Error> {
+        let data = Arc::new(data.into());
         thread::spawn({
+            let data = data.clone();
             move || -> Result<()> {
                 let len = data.len();
                 let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
@@ -643,7 +645,7 @@ impl File {
     pub(crate) fn new_static(
         index: usize,
         title: &str,
-        data: &'static [u8],
+        data: impl Into<Cow<'static, [u8]>>,
         event_sender: EventSender,
     ) -> Result<File, Error> {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));

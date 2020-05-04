@@ -2,34 +2,37 @@
 
 use anyhow::{anyhow, Result};
 
-use crate::bindings::{Binding, Keymap};
+use crate::bindings::{Keybind, Keymap};
 
 // Static data to generate a keymap.
 type KeymapData = &'static [(
-    (termwiz::input::Modifiers, termwiz::input::KeyCode), Binding,
+    (termwiz::input::Modifiers, termwiz::input::KeyCode),
+    Keybind,
 )];
 
 // Keymap macro implementation.
 //
-// Token-tree muncher: { rest } ( modifiers ) ( keys ) [ data ]
+// Token-tree muncher: { rest } ( visible ) ( modifiers ) ( keys ) [ data ]
 //
 // Consumes definition from 'rest'.  Modifiers are accumulated in 'modifiers'.  Key definitions are
 // accumulated in 'keys'.  Bindings are accumulated in 'data'.
 macro_rules! keymap_impl {
     // Base case: generate keymap data.
-    ( {} () () $data:tt ) => {
+    ( {} ( $visible:literal ) () () $data:tt ) => {
         pub(crate) static KEYMAP: $crate::keymaps::KeymapData = &$data;
     };
 
     // , (consume comma between keys)
     (
         { , $( $rest:tt )* }
+        ( $visible:literal )
         ( )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( $visible )
             ( )
             ( $( $keys )* )
             [ $( $data )* ]
@@ -42,12 +45,14 @@ macro_rules! keymap_impl {
             => $binding:ident $( ( $( $bind_params:tt )* ) )? ;
             $( $rest:tt )*
         }
+        ( $visible:literal )
         ( )
         ( )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( $visible )
             ( )
             ( )
             [ $( $data )* ]
@@ -60,8 +65,9 @@ macro_rules! keymap_impl {
             => $binding:ident $( ( $( $bind_params:tt )* ) )? ;
             $( $rest:tt )*
         }
+        ( $visible:literal )
         ( )
-        ( $key:tt $( $keys:tt )* )
+        ( $key:tt $key_visible:literal $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
@@ -69,13 +75,17 @@ macro_rules! keymap_impl {
                 => $binding $( ( $( $bind_params )* ) )? ;
                 $( $rest )*
             }
+            ( $visible )
             ( )
             ( $( $keys )* )
             [
                 $( $data )*
                 (
                     $key,
-                    $crate::bindings::Binding::$binding $( ( $( $bind_params )* ) )?,
+                    $crate::bindings::Keybind {
+                        binding: $crate::bindings::Binding::$binding $( ( $( $bind_params )* ) )?,
+                        visible: $key_visible,
+                    },
                 ),
             ]
         }
@@ -84,12 +94,14 @@ macro_rules! keymap_impl {
     // CTRL
     (
         { CTRL $( $rest:tt )* }
+        ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( $visible )
             ( $( $modifier )* CTRL )
             ( $( $keys )* )
             [ $( $data )* ]
@@ -99,12 +111,14 @@ macro_rules! keymap_impl {
     // SHIFT
     (
         { SHIFT $( $rest:tt )* }
+        ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( $visible )
             ( $( $modifier )* SHIFT )
             ( $( $keys )* )
             [ $( $data )* ]
@@ -114,12 +128,14 @@ macro_rules! keymap_impl {
     // ALT
     (
         { ALT $( $rest:tt )* }
+        ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( $visible )
             ( $( $modifier )* ALT )
             ( $( $keys )* )
             [ $( $data )* ]
@@ -129,12 +145,14 @@ macro_rules! keymap_impl {
     // SUPER
     (
         { SUPER $( $rest:tt )* }
+        ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( $visible )
             ( $( $modifier )* SUPER )
             ( $( $keys )* )
             [ $( $data )* ]
@@ -144,12 +162,14 @@ macro_rules! keymap_impl {
     // Character key (e.g. 'c')
     (
         { $key:literal $( $rest:tt )* }
+        ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( true )
             ( )
             (
                 $( $keys )*
@@ -160,6 +180,7 @@ macro_rules! keymap_impl {
                     ),
                     termwiz::input::KeyCode::Char($key),
                 )
+                $visible
             )
             [ $( $data )* ]
         }
@@ -168,12 +189,14 @@ macro_rules! keymap_impl {
     // KeyCode(params)
     (
         { $key:ident $( ( $( $key_params:tt )* ) )? $( $rest:tt )* }
+        ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
         [ $( $data:tt )* ]
     ) => {
         keymap_impl! {
             { $( $rest )* }
+            ( true )
             ( )
             (
                 $( $keys )*
@@ -184,7 +207,25 @@ macro_rules! keymap_impl {
                     ),
                     termwiz::input::KeyCode::$key $( ( $( $key_params )* ) )?,
                 )
+                $visible
             )
+            [ $( $data )* ]
+        }
+    };
+
+    // ( hidden binding )
+    (
+        { ( $( $bind:tt )* ) $( $rest:tt )* }
+        ( $visible:literal )
+        ( $( $modifier:ident )* )
+        ( $( $keys:tt )* )
+        [ $( $data:tt )* ]
+    ) => {
+        keymap_impl! {
+            { $( $bind )* $( $rest )* }
+            ( false )
+            ( $( $modifier )* )
+            ( $( $keys )* )
             [ $( $data )* ]
         }
     };
@@ -192,7 +233,7 @@ macro_rules! keymap_impl {
 
 macro_rules! keymap {
     ( $( $all:tt )* ) => {
-        keymap_impl! { { $( $all )* } () () [] }
+        keymap_impl! { { $( $all )* } (true) () () [] }
     };
 }
 
@@ -213,7 +254,7 @@ keymaps! {
 pub(crate) fn load(name: &str) -> Result<Keymap> {
     for (keymap_name, keymap_data) in KEYMAPS {
         if &name == keymap_name {
-            return Ok(keymap_data.iter().cloned().collect());
+            return Ok(Keymap::from(keymap_data.iter()));
         }
     }
 
