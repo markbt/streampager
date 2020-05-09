@@ -7,7 +7,7 @@ use crate::display::Action;
 use crate::event::EventSender;
 use crate::prompt::Prompt;
 use crate::screen::Screen;
-use crate::search::{Search, SearchKind};
+use crate::search::{MatchMotion, Search, SearchKind};
 
 /// Go to a line (Shortcut: ':')
 ///
@@ -84,7 +84,12 @@ pub(crate) fn search(kind: SearchKind, event_sender: EventSender) -> Prompt {
             move |screen: &mut Screen, value: &str| -> Result<Option<Action>, Error> {
                 screen.refresh_matched_lines();
                 if value.is_empty() {
-                    screen.set_search(None);
+                    match kind {
+                        SearchKind::First | SearchKind::FirstAfter(_) => {
+                            screen.move_match(MatchMotion::NextLine)
+                        }
+                        SearchKind::FirstBefore(_) => screen.move_match(MatchMotion::PreviousLine),
+                    }
                 } else {
                     screen.set_search(
                         Search::new(&screen.file, value, kind, event_sender.clone()).ok(),
