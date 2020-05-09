@@ -6,6 +6,7 @@ use crate::file::File;
 use crate::line::Line;
 use crate::progress::Progress;
 use anyhow::Result;
+use bit_set::BitSet;
 use std::time::{Duration, Instant};
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
@@ -14,6 +15,7 @@ use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
 /// Return value of `direct`.
+#[derive(Debug)]
 pub(crate) enum Outcome {
     /// Content is not completely rendered.
     /// A hint to enter full-screen.
@@ -69,6 +71,10 @@ pub(crate) fn direct<T: Terminal>(
         InterfaceMode::Delayed(duration) => Some(Instant::now() + duration),
         _ => None,
     };
+    let mut loading = BitSet::with_capacity(output_files.len() + error_files.len());
+    for file in output_files.iter().chain(error_files.iter()) {
+        loading.insert(file.index());
+    }
 
     let mut last_read = VecMap::new(); // file index -> line number last read
     let mut collect_unread = |files: &[File], max_lines: usize| -> Vec<Vec<u8>> {
@@ -132,13 +138,12 @@ pub(crate) fn direct<T: Terminal>(
     };
 
     let mut size = term.get_screen_size()?;
-    let mut loaded: VecMap<bool> = VecMap::new();
+    let mut loaded = BitSet::with_capacity(loading.capacity());
     let mut remaining = output_files.len() + error_files.len();
     while remaining > 0 {
         match events.get(term, Some(Duration::from_millis(10)))? {
             Some(Event::Loaded(i)) => {
-                if loaded.get(i) != Some(&true) {
-                    loaded.insert(i, true);
+                if loading.contains(i) && loaded.insert(i) {
                     remaining -= 1;
                 }
             }
