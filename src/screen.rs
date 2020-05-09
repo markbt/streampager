@@ -243,6 +243,11 @@ impl Screen {
         self.width
     }
 
+    /// Get the current overlay height
+    pub(crate) fn overlay_height(&self) -> usize {
+        self.rendered.overlay_height
+    }
+
     /// Get the screen's keymap
     pub(crate) fn keymap(&self) -> &Keymap {
         &self.keymap
