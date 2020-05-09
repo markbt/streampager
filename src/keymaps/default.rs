@@ -18,8 +18,8 @@ keymap! {
     RightArrow => ScrollRightColumns(4);
     SHIFT LeftArrow => ScrollLeftScreenFraction(4);
     SHIFT RightArrow => ScrollRightScreenFraction(4);
-    '[' => PreviousFile;
-    ']' => NextFile;
+    '[', SHIFT Tab => PreviousFile;
+    ']', Tab => NextFile;
     'h', F 1 => Help;
     '#' => ToggleLineNumbers;
     '\\' => ToggleLineWrapping;

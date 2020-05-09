@@ -48,6 +48,22 @@ fn write_key_names(text: &mut String, keys: &[(Modifiers, KeyCode)]) -> Result<u
                 text.push_str(&n_string);
                 w += n_string.width() + 1;
             }
+            KeyCode::UpArrow => {
+                text.push_str("Up");
+                w += 2;
+            }
+            KeyCode::DownArrow => {
+                text.push_str("Down");
+                w += 4;
+            }
+            KeyCode::LeftArrow => {
+                text.push_str("Left");
+                w += 4;
+            }
+            KeyCode::RightArrow => {
+                text.push_str("Right");
+                w += 5;
+            }
             keycode => {
                 let mut key_string = String::new();
                 write!(key_string, "{:?}", keycode)?;

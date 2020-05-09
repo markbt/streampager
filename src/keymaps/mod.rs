@@ -289,6 +289,7 @@ impl KeymapFile {
     fn parse_keycode(ident: &str) -> Option<KeyCode> {
         use KeyCode::*;
         match ident {
+            "Space" => Some(Char(' ')),
             "Cancel" => Some(Cancel),
             "Backspace" => Some(Backspace),
             "Tab" => Some(Tab),
@@ -309,6 +310,10 @@ impl KeymapFile {
             "RightArrow" => Some(RightArrow),
             "UpArrow" => Some(UpArrow),
             "DownArrow" => Some(DownArrow),
+            "Left" => Some(LeftArrow),
+            "Right" => Some(RightArrow),
+            "Up" => Some(UpArrow),
+            "Down" => Some(DownArrow),
             "Select" => Some(Select),
             "Print" => Some(Print),
             "Execute" => Some(Execute),
