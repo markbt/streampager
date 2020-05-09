@@ -13,7 +13,7 @@ contents of files.
 It also provides *spp*, which runs its arguments as a command, capturing its
 output and error streams for paging.
 
-Press **h** or **?** from within *streampager* to display the keyboard shortcuts.
+Press **h** from within *streampager* to display the keyboard shortcuts.
 Press **q** to exit.
 
 ## Basic Usage for *sp*
@@ -95,12 +95,36 @@ command.  For example:
 
 is equivalent to the previous example.
 
+## Configuration
+
+*streampager* can be configured by a configuration file at
+`$CONFIG_DIR/streampager/streampager.toml`.  The configuration directory
+varies by platform; on Linux it is typically `~/.config`.
+
+### Example Configuration
+
+```
+interface_mode = "delayed"
+scroll_past_eof = true
+read_ahead_lines = 20000
+wrapping_mode = "word"
+keymap = "mykeymap"
+```
+
 ## Keyboard Shortcuts
+
+*streampager* provides various shortcuts for common operations, many of which
+are compatible with `less`.  See the help screen for a full list.  The most
+common ones are listed below.
+
+The keymap can be overridden by setting `keymap` in the *streampager*
+configuration file.  Keymap files should be located in
+`$CONFIG_DIR/streampager/keymaps/`.
 
 ### General
 
 * **`q`**: Quit.
-* **`h`** or **`?`**: Show the help screen.
+* **`h`** or **`F1`** Show the help screen.
 * **`Esc`**: Close help or any open prompt.
 
 ### Navigation
@@ -108,7 +132,7 @@ is equivalent to the previous example.
 * **Cursor Keys**: Move one line or four columns.
 * **`Shift` + Cursor Keys**: Move one quarter of the screen.
 * **`Page Down`** or **`Space`**: Move a full page down.
-* **`Page Up`**, **`Backspace`** or **`b`**: Move a full page up.
+* **`Page Up`** or **`Backspace`**: Move a full page up.
 * **`Home`** and **`End`**: Move to the top or bottom of the file.
 * **`:`**: Go to a line number or percentage through the file.
 * **`[`** and **`]`**: Switch to the previous or next file.
@@ -118,18 +142,9 @@ is equivalent to the previous example.
 * **`#`**: Toggle display of line numbers.
 * **`\`**: Toggle line and word wrapping.
 
-### Searching
-
-* **`/`**: Search from the top of the file.
-* **`<`** and **`>`**: Search backwards or forwards from the current screen.
-* **`.`** and **`,`**: Move to the next or previous match.
-* **`n`** and **`p`**: Move to the next or previous matching line.
-* **`(`** and **`)`**: Move to the first or last match.
-
 ## Things Left To Do
 
-* [ ] Toggle line wrapping (Key: **`\`**)
 * [ ] Line ending detection and handling (display `<CR>` in files with mixed line
   endings).
 * [ ] Support composing character sequences (e.g. "لآ")
-* [ ] Saving content to a file on disk (Key: **`=`**)
+* [ ] Saving content to a file on disk (Key: **`s`**)

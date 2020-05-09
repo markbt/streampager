@@ -2,8 +2,11 @@
 
 use std::time::Duration;
 
+use serde::Deserialize;
+
 /// Specify what interface to use.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(from = "&str")]
 pub enum InterfaceMode {
     /// The full screen terminal interface.
     ///
@@ -83,13 +86,16 @@ impl From<&str> for InterfaceMode {
 }
 
 /// Specify the default line wrapping mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum WrappingMode {
     /// Lines are not wrapped.
+    #[serde(rename = "none")]
     Unwrapped,
     /// Lines are wrapped on grapheme boundaries.
+    #[serde(rename = "line")]
     GraphemeBoundary,
     /// Lines are wrapped on word boundaries.
+    #[serde(rename = "word")]
     WordBoundary,
 }
 
@@ -110,7 +116,8 @@ impl Default for WrappingMode {
 }
 
 /// A group of configurations.
-#[derive(Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(default)]
 pub struct Config {
     /// Specify when to use fullscreen.
     pub interface_mode: InterfaceMode,
@@ -123,27 +130,59 @@ pub struct Config {
 
     /// Specify default wrapping move.
     pub wrapping_mode: WrappingMode,
+
+    /// Specify the name of the default key map.
+    pub keymap: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            interface_mode: Default::default(),
+            scroll_past_eof: true,
+            read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
+            wrapping_mode: Default::default(),
+            keymap: String::from("default"),
+        }
+    }
 }
 
 impl Config {
-    /// Construct [`Config`] from environment variables.
-    pub fn from_env() -> Self {
-        use std::env::var;
-        Self {
-            interface_mode: var("SP_INTERFACE_MODE")
-                .ok()
-                .map(|s| InterfaceMode::from(s.as_ref()))
-                .unwrap_or_default(),
-            scroll_past_eof: var("SP_SCROLL_PAST_EOF")
-                .ok()
-                .and_then(|s| parse_bool(&s))
-                .unwrap_or(true),
-            read_ahead_lines: var("SP_READ_AHEAD_LINES")
-                .ok()
-                .and_then(|s| s.parse::<usize>().ok())
-                .unwrap_or(crate::file::DEFAULT_NEEDED_LINES),
-            wrapping_mode: WrappingMode::Unwrapped,
+    /// Create [`Config`] from the user's default config file.
+    pub fn from_config_file() -> Self {
+        if let Some(mut path) = dirs::config_dir() {
+            path.push("streampager");
+            path.push("streampager.toml");
+            if let Ok(config) = std::fs::read_to_string(&path) {
+                match toml::from_str(&config) {
+                    Ok(config) => return config,
+                    Err(e) => eprintln!(
+                        "streampager: failed to parse config at {:?}, using defaults: {}",
+                        path, e
+                    ),
+                }
+            }
         }
+        Self::default()
+    }
+
+    /// Modify [`Config`] using environment variables.
+    pub fn with_env(mut self: Self) -> Self {
+        use std::env::var;
+        if let Ok(s) = var("SP_INTERFACE_MODE") {
+            self.interface_mode = InterfaceMode::from(s.as_ref());
+        }
+        if let Ok(s) = var("SP_SCROLL_PAST_EOF") {
+            if let Some(b) = parse_bool(&s) {
+                self.scroll_past_eof = b;
+            }
+        }
+        if let Ok(s) = var("SP_READ_AHEAD_LINES") {
+            if let Ok(n) = s.parse::<usize>() {
+                self.read_ahead_lines = n;
+            }
+        }
+        self
     }
 }
 

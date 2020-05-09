@@ -52,25 +52,18 @@ enum FileSpec {
 /// Run the pager, opening files or file descriptors (including stdin).
 fn open_files(args: ArgMatches) -> Result<(), Error> {
     let mut pager = Pager::new_using_system_terminal()?;
-    let mode = {
-        if args.is_present("no_alternate") {
-            InterfaceMode::Hybrid
+    if args.is_present("no_alternate") {
+        pager.set_interface_mode(InterfaceMode::Hybrid);
+    } else if args.is_present("fullscreen") {
+        pager.set_interface_mode(InterfaceMode::FullScreen);
+    } else if let Some(delay) = args.value_of("delayed") {
+        let delay = delay.parse::<u64>()?;
+        if delay == 0 {
+            pager.set_interface_mode(InterfaceMode::FullScreen);
         } else {
-            let delayed = if args.is_present("fullscreen") {
-                Some(0)
-            } else {
-                args.value_of("delayed")
-                    .map(|ms| ms.parse::<u64>())
-                    .transpose()?
-            };
-            match delayed {
-                Some(0) => InterfaceMode::FullScreen,
-                None => InterfaceMode::Delayed(Duration::from_secs(2)),
-                Some(ms) => InterfaceMode::Delayed(Duration::from_secs(ms)),
-            }
+            pager.set_interface_mode(InterfaceMode::Delayed(Duration::from_secs(delay)));
         }
-    };
-    pager.set_interface_mode(mode);
+    }
 
     if args.is_present("no_alternate") {
         pager.set_wrapping_mode(WrappingMode::GraphemeBoundary);

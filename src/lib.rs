@@ -2,6 +2,8 @@
 //!
 //! A pager for streams.
 #![warn(missing_docs)]
+#![recursion_limit = "1024"]
+//#![feature(trace_macros)]
 
 use anyhow::bail;
 pub use anyhow::Result;
@@ -13,6 +15,7 @@ use termwiz::terminal::{SystemTerminal, Terminal};
 use vec_map::VecMap;
 
 mod bar;
+pub mod bindings;
 mod buffer;
 mod buffer_cache;
 mod command;
@@ -21,6 +24,8 @@ mod direct;
 mod display;
 mod event;
 mod file;
+mod help;
+mod keymaps;
 mod line;
 mod line_cache;
 mod line_drawing;
@@ -120,7 +125,7 @@ impl Pager {
         let files = Vec::new();
         let error_files = VecMap::new();
         let progress = None;
-        let config = Config::from_env();
+        let config = Config::from_config_file().with_env();
 
         Ok(Self {
             term,

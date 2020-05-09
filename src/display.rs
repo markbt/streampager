@@ -1,10 +1,12 @@
 //! Manage the Display.
 use anyhow::Error;
 use scopeguard::guard;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use termwiz::caps::Capabilities as TermCapabilities;
 use termwiz::cell::CellAttributes;
+use termwiz::color::ColorAttribute;
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
 use termwiz::surface::{CursorShape, Position};
@@ -16,6 +18,7 @@ use crate::config::Config;
 use crate::direct;
 use crate::event::{Event, EventStream, UniqueInstance};
 use crate::file::File;
+use crate::help::help_text;
 use crate::progress::Progress;
 use crate::screen::Screen;
 use crate::search::SearchKind;
@@ -105,22 +108,22 @@ impl Screens {
         mut error_files: VecMap<File>,
         progress: Option<Progress>,
         config: Arc<Config>,
-    ) -> Screens {
+    ) -> Result<Screens, Error> {
         let count = files.len();
         let mut screens = Vec::new();
         for file in files.into_iter() {
             let index = file.index();
-            let mut screen = Screen::new(file, config.clone());
+            let mut screen = Screen::new(file, config.clone())?;
             screen.set_progress(progress.clone());
             screen.set_error_file(error_files.remove(index));
             screens.push(screen);
         }
-        Screens {
+        Ok(Screens {
             screens,
             overlay: None,
             current_index: 0,
             overlay_index: count,
-        }
+        })
     }
 
     /// Get the current screen.
@@ -185,29 +188,33 @@ pub(crate) fn start(
         direct::Outcome::RenderNothing => term.enter_alternate_screen()?,
     }
 
+    let overlay_height = AtomicUsize::new(0);
     let mut term = guard(term, |mut term| {
         // Clean up when exiting.  Most of this should be achieved by exiting
         // the alternate screen, but just in case it isn't, move to the
         // bottom of the screen and reset all attributes.
         let size = term.get_screen_size().unwrap();
+        let overlay_height = overlay_height.load(Ordering::SeqCst);
+        let scroll_count = 1usize.saturating_sub(overlay_height);
         term.render(&[
             Change::CursorShape(CursorShape::Default),
             Change::AllAttributes(CellAttributes::default()),
             Change::ScrollRegionUp {
                 first_row: 0,
                 region_size: size.rows,
-                scroll_count: 1,
+                scroll_count,
             },
             Change::CursorPosition {
                 x: Position::Absolute(0),
-                y: Position::Absolute(size.rows),
+                y: Position::Absolute(size.rows.saturating_sub(overlay_height + scroll_count)),
             },
+            Change::ClearToEndOfScreen(ColorAttribute::default()),
         ])
         .unwrap();
     });
     let config = Arc::new(config);
     let caps = Capabilities::new(term_caps);
-    let mut screens = Screens::new(files, error_files, progress, config.clone());
+    let mut screens = Screens::new(files, error_files, progress, config.clone())?;
     let event_sender = events.sender();
     let render_unique = UniqueInstance::new();
     let refresh_unique = UniqueInstance::new();
@@ -337,15 +344,16 @@ pub(crate) fn start(
                 }
                 Action::ShowHelp => {
                     let overlay_index = screens.overlay_index + 1;
+                    let screen = screens.current();
                     let mut screen = Screen::new(
                         File::new_static(
                             overlay_index,
                             "HELP",
-                            include_bytes!("help.txt"),
+                            help_text(screen.keymap())?.into_bytes(),
                             event_sender.clone(),
                         )?,
                         config.clone(),
-                    );
+                    )?;
                     let size = term.get_screen_size()?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
@@ -362,6 +370,8 @@ pub(crate) fn start(
                     term.render(&screen.render(&caps)?)?;
                 }
                 Action::Quit => {
+                    let screen = screens.current();
+                    overlay_height.store(screen.overlay_height(), Ordering::SeqCst);
                     return Ok(());
                 }
             }
