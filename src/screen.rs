@@ -1024,26 +1024,34 @@ impl Screen {
 
     /// Scroll up (screen / n) lines.
     fn scroll_up_screen_fraction(&mut self, n: usize) {
-        let lines = (self.rendered.height - self.rendered.overlay_height) / n;
-        self.scroll_up(lines);
+        if n != 0 {
+            let lines = (self.rendered.height - self.rendered.overlay_height) / n;
+            self.scroll_up(lines);
+        }
     }
 
     /// Scroll down (screen / n) lines.
     fn scroll_down_screen_fraction(&mut self, n: usize) {
-        let lines = (self.rendered.height - self.rendered.overlay_height) / n;
-        self.scroll_down(lines);
+        if n != 0 {
+            let lines = (self.rendered.height - self.rendered.overlay_height) / n;
+            self.scroll_down(lines);
+        }
     }
 
     /// Scroll left (screen / n) columns.
     fn scroll_left_screen_fraction(&mut self, n: usize) {
-        let columns = self.rendered.width / n;
-        self.scroll_left(columns);
+        if n != 0 {
+            let columns = self.rendered.width / n;
+            self.scroll_left(columns);
+        }
     }
 
     /// Scroll right (screen / n) columns.
     fn scroll_right_screen_fraction(&mut self, n: usize) {
-        let columns = self.rendered.width / n;
-        self.scroll_right(columns);
+        if n != 0 {
+            let columns = self.rendered.width / n;
+            self.scroll_right(columns);
+        }
     }
 
     /// Dispatch a keypress to navigate the displayed file.

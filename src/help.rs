@@ -42,6 +42,12 @@ fn write_key_names(text: &mut String, keys: &[(Modifiers, KeyCode)]) -> Result<u
                 text.push(*c);
                 w += c.width().unwrap_or(0);
             }
+            KeyCode::Function(n) => {
+                let n_string = n.to_string();
+                text.push('F');
+                text.push_str(&n_string);
+                w += n_string.width() + 1;
+            }
             keycode => {
                 let mut key_string = String::new();
                 write!(key_string, "{:?}", keycode)?;

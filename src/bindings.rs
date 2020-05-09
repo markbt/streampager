@@ -1,6 +1,7 @@
 //! Key bindings.
 use std::collections::HashMap;
 
+use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 use termwiz::input::{KeyCode, Modifiers};
 
@@ -174,6 +175,54 @@ impl Binding {
             Unrecognized(_) => Category::None,
         }
     }
+
+    pub(crate) fn parse(ident: String, params: Vec<String>) -> Result<Self> {
+        use Binding::*;
+
+        let param_usize = |index| -> Result<usize> {
+            let value: &String = params
+                .get(index)
+                .ok_or_else(|| anyhow!("{}: missing parameter {}", ident, index))?;
+            let value = value
+                .parse::<usize>()
+                .with_context(|| format!("{}: parameter {}", ident, index))?;
+            Ok(value)
+        };
+
+        let binding = match ident.as_str() {
+            "Quit" => Quit,
+            "Refresh" => Refresh,
+            "Help" => Help,
+            "Cancel" => Cancel,
+            "PreviousFile" => PreviousFile,
+            "NextFile" => NextFile,
+            "ScrollUpLines" => ScrollUpLines(param_usize(0)?),
+            "ScrollDownLines" => ScrollDownLines(param_usize(0)?),
+            "ScrollUpScreenFraction" => ScrollUpScreenFraction(param_usize(0)?),
+            "ScrollDownScreenFraction" => ScrollDownScreenFraction(param_usize(0)?),
+            "ScrollToTop" => ScrollToTop,
+            "ScrollToBottom" => ScrollToBottom,
+            "ScrollLeftColumns" => ScrollLeftColumns(param_usize(0)?),
+            "ScrollRightColumns" => ScrollRightColumns(param_usize(0)?),
+            "ScrollLeftScreenFraction" => ScrollLeftScreenFraction(param_usize(0)?),
+            "ScrollRightScreenFraction" => ScrollRightScreenFraction(param_usize(0)?),
+            "ToggleLineNumbers" => ToggleLineNumbers,
+            "ToggleLineWrapping" => ToggleLineWrapping,
+            "PromptGoToLine" => PromptGoToLine,
+            "PromptSearchFromStart" => PromptSearchFromStart,
+            "PromptSearchForwards" => PromptSearchForwards,
+            "PromptSearchBackwards" => PromptSearchBackwards,
+            "PreviousMatch" => PreviousMatch,
+            "NextMatch" => NextMatch,
+            "PreviousMatchLine" => PreviousMatchLine,
+            "NextMatchLine" => NextMatchLine,
+            "FirstMatch" => FirstMatch,
+            "LastMatch" => LastMatch,
+            _ => Unrecognized(ident),
+        };
+
+        Ok(binding)
+    }
 }
 
 impl std::fmt::Display for Binding {
@@ -236,7 +285,7 @@ pub(crate) struct Keymap {
     keys: IndexMap<Binding, Vec<(Modifiers, KeyCode)>>,
 }
 
-impl<I: IntoIterator<Item = &'static ((Modifiers, KeyCode), Keybind)>> From<I> for Keymap {
+impl<'a, I: IntoIterator<Item = &'a ((Modifiers, KeyCode), Keybind)>> From<I> for Keymap {
     fn from(iter: I) -> Keymap {
         let iter = iter.into_iter();
         let size_hint = iter.size_hint();
