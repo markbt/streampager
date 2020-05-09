@@ -186,9 +186,9 @@ macro_rules! keymap_impl {
         }
     };
 
-    // KeyCode(params)
+    // F <number>
     (
-        { $key:ident $( ( $( $key_params:tt )* ) )? $( $rest:tt )* }
+        { F $num:literal $( $rest:tt )* }
         ( $visible:literal )
         ( $( $modifier:ident )* )
         ( $( $keys:tt )* )
@@ -205,7 +205,34 @@ macro_rules! keymap_impl {
                         $( termwiz::input::Modifiers::$modifier.bits() | )*
                         termwiz::input::Modifiers::NONE.bits()
                     ),
-                    termwiz::input::KeyCode::$key $( ( $( $key_params )* ) )?,
+                    termwiz::input::KeyCode::Function($num),
+                )
+                $visible
+            )
+            [ $( $data )* ]
+        }
+    };
+
+    // KeyCode
+    (
+        { $key:ident $( $rest:tt )* }
+        ( $visible:literal )
+        ( $( $modifier:ident )* )
+        ( $( $keys:tt )* )
+        [ $( $data:tt )* ]
+    ) => {
+        keymap_impl! {
+            { $( $rest )* }
+            ( true )
+            ( )
+            (
+                $( $keys )*
+                (
+                    termwiz::input::Modifiers::from_bits_truncate(
+                        $( termwiz::input::Modifiers::$modifier.bits() | )*
+                        termwiz::input::Modifiers::NONE.bits()
+                    ),
+                    termwiz::input::KeyCode::$key,
                 )
                 $visible
             )
