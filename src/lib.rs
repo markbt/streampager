@@ -9,6 +9,7 @@ use anyhow::bail;
 pub use anyhow::Result;
 use std::ffi::OsStr;
 use std::io::Read;
+use std::sync::Arc;
 use termwiz::caps::ColorLevel;
 use termwiz::caps::{Capabilities, ProbeHints};
 use termwiz::terminal::{SystemTerminal, Terminal};
@@ -43,7 +44,8 @@ mod screen;
 mod search;
 mod util;
 
-use config::{Config, InterfaceMode, WrappingMode};
+use bindings::Keymap;
+use config::{Config, InterfaceMode, KeymapConfig, WrappingMode};
 use event::EventStream;
 use file::File;
 use progress::Progress;
@@ -228,6 +230,18 @@ impl Pager {
     /// Set default wrapping mode. See [`WrappingMode`] for details.
     pub fn set_wrapping_mode(&mut self, value: impl Into<WrappingMode>) -> &mut Self {
         self.config.wrapping_mode = value.into();
+        self
+    }
+
+    /// Set keymap name.
+    pub fn set_keymap_name(&mut self, keymap: impl Into<String>) -> &mut Self {
+        self.config.keymap = KeymapConfig::Name(keymap.into());
+        self
+    }
+
+    /// Set keymap.
+    pub fn set_keymap(&mut self, keymap: Keymap) -> &mut Self {
+        self.config.keymap = KeymapConfig::Keymap(Arc::new(keymap));
         self
     }
 

@@ -5,14 +5,14 @@ use pest::Parser;
 use pest_derive::Parser;
 use termwiz::input::{KeyCode, Modifiers};
 
-use crate::bindings::{Binding, Keybind};
+use crate::bindings::{Binding, BindingConfig};
 
 #[derive(Parser)]
 #[grammar = "keymaps/keymap.pest"]
 struct KeymapFileParser;
 
 // File data to generate a keymap
-pub(crate) struct KeymapFile(Vec<((Modifiers, KeyCode), Keybind)>);
+pub(crate) struct KeymapFile(Vec<((Modifiers, KeyCode), BindingConfig)>);
 
 impl KeymapFile {
     fn parse_keycode(ident: &str) -> Option<KeyCode> {
@@ -172,8 +172,8 @@ impl KeymapFile {
                                 let binding = Self::parse_binding(part)?;
                                 for (key, visible) in keys.into_iter() {
                                     let binding = binding.clone();
-                                    let keybind = Keybind { binding, visible };
-                                    keymap.push((key, keybind));
+                                    let binding_config = BindingConfig { binding, visible };
+                                    keymap.push((key, binding_config));
                                 }
                                 keys = Vec::new();
                             }
@@ -186,7 +186,7 @@ impl KeymapFile {
         Ok(KeymapFile(keymap))
     }
 
-    pub(crate) fn iter(&self) -> impl IntoIterator<Item = &((Modifiers, KeyCode), Keybind)> {
+    pub(crate) fn iter(&self) -> impl IntoIterator<Item = &((Modifiers, KeyCode), BindingConfig)> {
         self.0.iter()
     }
 }

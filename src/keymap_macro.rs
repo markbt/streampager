@@ -72,7 +72,7 @@ macro_rules! keymap_impl {
                 $( $data )*
                 (
                     $key,
-                    $crate::bindings::Keybind {
+                    $crate::bindings::BindingConfig {
                         binding: $crate::bindings::Binding::$binding $( ( $( $bind_params )* ) )?,
                         visible: $key_visible,
                     },

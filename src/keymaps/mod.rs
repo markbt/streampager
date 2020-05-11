@@ -3,10 +3,10 @@
 use anyhow::{anyhow, Result};
 use termwiz::input::{KeyCode, Modifiers};
 
-use crate::bindings::{Keybind, Keymap};
+use crate::bindings::{BindingConfig, Keymap};
 
 // Static data to generate a keymap.
-type KeymapData = &'static [((Modifiers, KeyCode), Keybind)];
+type KeymapData = &'static [((Modifiers, KeyCode), BindingConfig)];
 
 macro_rules! keymaps {
     ( $( $visibility:vis mod $name:ident ; )* ) => {

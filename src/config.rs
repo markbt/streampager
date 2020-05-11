@@ -1,8 +1,12 @@
 //! Configuration that affects Pager behaviors.
 
+use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Result;
 use serde::Deserialize;
+
+use crate::bindings::Keymap;
 
 /// Specify what interface to use.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]
@@ -115,6 +119,38 @@ impl Default for WrappingMode {
     }
 }
 
+/// Keymap Configuration
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(from = "&str")]
+pub enum KeymapConfig {
+    /// A keymap name to be loaded.
+    Name(String),
+
+    /// An already-loaded keymap.
+    Keymap(Arc<Keymap>),
+}
+
+impl KeymapConfig {
+    pub(crate) fn load(&self) -> Result<Arc<Keymap>> {
+        match self {
+            Self::Name(name) => Ok(Arc::new(crate::keymaps::load(name)?)),
+            Self::Keymap(keymap) => Ok(keymap.clone()),
+        }
+    }
+}
+
+impl Default for KeymapConfig {
+    fn default() -> Self {
+        Self::Name(String::from("default"))
+    }
+}
+
+impl From<&str> for KeymapConfig {
+    fn from(value: &str) -> Self {
+        Self::Name(String::from(value))
+    }
+}
+
 /// A group of configurations.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(default)]
@@ -132,7 +168,7 @@ pub struct Config {
     pub wrapping_mode: WrappingMode,
 
     /// Specify the name of the default key map.
-    pub keymap: String,
+    pub keymap: KeymapConfig,
 }
 
 impl Default for Config {
@@ -142,7 +178,7 @@ impl Default for Config {
             scroll_past_eof: true,
             read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
             wrapping_mode: Default::default(),
-            keymap: String::from("default"),
+            keymap: Default::default(),
         }
     }
 }

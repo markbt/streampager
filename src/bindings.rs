@@ -271,14 +271,26 @@ impl std::fmt::Display for Binding {
     }
 }
 
+/// A binding to a key.
 #[derive(Clone, Debug)]
-pub(crate) struct Keybind {
-    pub(crate) binding: Binding,
+pub struct BindingConfig {
+    /// The binding.
+    pub binding: Binding,
 
-    pub(crate) visible: bool,
+    /// Whether this binding is visible in the help screen.
+    pub visible: bool,
 }
 
-pub(crate) struct Keymap {
+impl BindingConfig {
+    /// Create new binding config.
+    pub fn new(binding: Binding, visible: bool) -> Self {
+        Self { binding, visible }
+    }
+}
+
+/// A collection of key bindings.
+#[derive(PartialEq, Eq)]
+pub struct Keymap {
     /// Map of bindings from keys.
     bindings: HashMap<(Modifiers, KeyCode), Binding>,
 
@@ -286,16 +298,16 @@ pub(crate) struct Keymap {
     keys: IndexMap<Binding, Vec<(Modifiers, KeyCode)>>,
 }
 
-impl<'a, I: IntoIterator<Item = &'a ((Modifiers, KeyCode), Keybind)>> From<I> for Keymap {
+impl<'a, I: IntoIterator<Item = &'a ((Modifiers, KeyCode), BindingConfig)>> From<I> for Keymap {
     fn from(iter: I) -> Keymap {
         let iter = iter.into_iter();
         let size_hint = iter.size_hint();
         let mut bindings = HashMap::with_capacity(size_hint.0);
         let mut keys = IndexMap::with_capacity(size_hint.0);
-        for &((modifiers, keycode), ref keybind) in iter {
-            bindings.insert((modifiers, keycode), keybind.binding.clone());
-            if keybind.visible {
-                keys.entry(keybind.binding.clone())
+        for &((modifiers, keycode), ref binding_config) in iter {
+            bindings.insert((modifiers, keycode), binding_config.binding.clone());
+            if binding_config.visible {
+                keys.entry(binding_config.binding.clone())
                     .or_insert_with(Vec::new)
                     .push((modifiers, keycode));
             }
@@ -305,11 +317,59 @@ impl<'a, I: IntoIterator<Item = &'a ((Modifiers, KeyCode), Keybind)>> From<I> fo
 }
 
 impl Keymap {
-    pub(crate) fn get(&self, modifiers: Modifiers, keycode: KeyCode) -> Option<&Binding> {
+    /// Create a new, empty, keymap.
+    pub fn new() -> Self {
+        Keymap {
+            bindings: HashMap::new(),
+            keys: IndexMap::new(),
+        }
+    }
+
+    /// Get the binding associated with a key combination.
+    pub fn get(&self, modifiers: Modifiers, keycode: KeyCode) -> Option<&Binding> {
         self.bindings.get(&(modifiers, keycode))
+    }
+
+    /// Bind (or unbind) a key combination.
+    pub fn bind(
+        &mut self,
+        modifiers: Modifiers,
+        keycode: KeyCode,
+        binding_config: Option<BindingConfig>,
+    ) -> &mut Self {
+        if let Some(old_binding) = self.bindings.remove(&(modifiers, keycode)) {
+            if let Some(keys) = self.keys.get_mut(&old_binding) {
+                keys.retain(|&item| item != (modifiers, keycode));
+            }
+        }
+        if let Some(binding_config) = binding_config {
+            self.bindings
+                .insert((modifiers, keycode), binding_config.binding.clone());
+            if binding_config.visible {
+                self.keys
+                    .entry(binding_config.binding.clone())
+                    .or_insert_with(Vec::new)
+                    .push((modifiers, keycode));
+            }
+        }
+        self
     }
 
     pub(crate) fn iter_keys(&self) -> impl Iterator<Item = (&Binding, &Vec<(Modifiers, KeyCode)>)> {
         self.keys.iter()
+    }
+}
+
+impl Default for Keymap {
+    fn default() -> Self {
+        Keymap::from(crate::keymaps::default::KEYMAP.iter())
+    }
+}
+
+impl std::fmt::Debug for Keymap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Keymap")
+            .field(&format!("<{} keys bound>", self.bindings.len()))
+            .finish()
     }
 }

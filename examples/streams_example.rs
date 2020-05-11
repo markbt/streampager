@@ -5,7 +5,9 @@ use std::io;
 use std::io::Write;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
+use streampager::bindings::{Binding, BindingConfig, Keymap};
 use streampager::{Pager, Result};
+use termwiz::input::{KeyCode, Modifiers};
 
 fn main() -> Result<()> {
     let (out_read, mut out_write) = pipe();
@@ -55,12 +57,21 @@ fn main() -> Result<()> {
         Ok(())
     });
 
+    // Customize the default keymap to make "x" also quit.
+    let mut keymap = Keymap::default();
+    keymap.bind(
+        Modifiers::NONE,
+        KeyCode::Char('x'),
+        Some(BindingConfig::new(Binding::Quit, true)),
+    );
+
     let mut pager = Pager::new_using_system_terminal()?;
     pager
         .add_output_stream(out_read, "output stream")?
         .add_error_stream(err_read, "error stream")?
         .set_progress_stream(prog_read)
-        .set_interface_mode(std::env::var("MODE").unwrap_or_default().as_ref());
+        .set_interface_mode(std::env::var("MODE").unwrap_or_default().as_ref())
+        .set_keymap(keymap);
 
     pager.run()?;
 

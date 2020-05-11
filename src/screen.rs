@@ -138,7 +138,7 @@ pub(crate) struct Screen {
     progress: Option<Progress>,
 
     /// The keymap in use.
-    keymap: Keymap,
+    keymap: Arc<Keymap>,
 
     /// The current width.
     width: usize,
@@ -205,7 +205,7 @@ impl Screen {
         Ok(Screen {
             error_file: None,
             progress: None,
-            keymap: crate::keymaps::load(&config.keymap)?,
+            keymap: config.keymap.load()?,
             width: 0,
             height: 0,
             left: 0,
