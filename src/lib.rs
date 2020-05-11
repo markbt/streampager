@@ -25,6 +25,10 @@ mod display;
 mod event;
 mod file;
 mod help;
+#[cfg(feature = "keymap-file")]
+mod keymap_file;
+#[macro_use]
+mod keymap_macro;
 mod keymaps;
 mod line;
 mod line_cache;

@@ -176,7 +176,8 @@ impl Binding {
         }
     }
 
-    pub(crate) fn parse(ident: String, params: Vec<String>) -> Result<Self> {
+    /// Parse a keybinding identifier and list of parameters into a key binding.
+    pub fn parse(ident: String, params: Vec<String>) -> Result<Self> {
         use Binding::*;
 
         let param_usize = |index| -> Result<usize> {
