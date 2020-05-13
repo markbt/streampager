@@ -3,7 +3,7 @@
 //! A pager for streams.
 #![warn(missing_docs)]
 #![recursion_limit = "1024"]
-//#![feature(trace_macros)]
+#![allow(clippy::comparison_chain)]
 
 use anyhow::bail;
 pub use anyhow::Result;
@@ -94,12 +94,12 @@ fn termcaps() -> Result<Capabilities> {
 impl Pager {
     /// Build a `Pager` using the system terminal.
     pub fn new_using_system_terminal() -> Result<Self> {
-        Self::new_with_terminal_func(|caps| SystemTerminal::new(caps))
+        Self::new_with_terminal_func(SystemTerminal::new)
     }
 
     /// Build a `Pager` using the system stdio.
     pub fn new_using_stdio() -> Result<Self> {
-        Self::new_with_terminal_func(|caps| SystemTerminal::new_from_stdio(caps))
+        Self::new_with_terminal_func(SystemTerminal::new_from_stdio)
     }
 
     #[cfg(unix)]

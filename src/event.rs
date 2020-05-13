@@ -89,16 +89,14 @@ impl EventStream {
     }
 
     fn try_recv(&self) -> Result<Option<Event>, Error> {
-        loop {
-            return match self.recv.try_recv() {
-                Ok(Envelope::Normal(event)) => Ok(Some(event)),
-                Ok(Envelope::Unique(event, unique)) => {
-                    unique.0.store(false, Ordering::SeqCst);
-                    Ok(Some(event))
-                }
-                Err(mpsc::TryRecvError::Empty) => Ok(None),
-                Err(e) => Err(e.into()),
-            };
+        match self.recv.try_recv() {
+            Ok(Envelope::Normal(event)) => Ok(Some(event)),
+            Ok(Envelope::Unique(event, unique)) => {
+                unique.0.store(false, Ordering::SeqCst);
+                Ok(Some(event))
+            }
+            Err(mpsc::TryRecvError::Empty) => Ok(None),
+            Err(e) => Err(e.into()),
         }
     }
 

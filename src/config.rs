@@ -104,7 +104,7 @@ pub enum WrappingMode {
 }
 
 impl WrappingMode {
-    pub(crate) fn next_mode(&self) -> WrappingMode {
+    pub(crate) fn next_mode(self) -> WrappingMode {
         match self {
             WrappingMode::Unwrapped => WrappingMode::GraphemeBoundary,
             WrappingMode::GraphemeBoundary => WrappingMode::WordBoundary,

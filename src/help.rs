@@ -99,7 +99,7 @@ pub(crate) fn help_text(keymap: &Keymap) -> Result<String> {
                     text.push_str("\n    ");
                     text.push_str(prefix);
                 }
-                write!(text, "{}\n", binding)?;
+                writeln!(text, "{}", binding)?;
             }
         }
     }

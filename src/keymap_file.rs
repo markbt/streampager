@@ -89,7 +89,7 @@ impl KeymapFile {
             "ApplicationUpArrow" => Some(ApplicationUpArrow),
             "ApplicationDownArrow" => Some(ApplicationDownArrow),
             other => {
-                if other.starts_with("F") && other.chars().skip(1).all(char::is_numeric) {
+                if other.starts_with('F') && other.chars().skip(1).all(char::is_numeric) {
                     let n = other[1..].parse::<u8>().ok()?;
                     Some(Function(n))
                 } else {
@@ -138,7 +138,7 @@ impl KeymapFile {
                 other => panic!("Unexpected rule inside key: {:?}", other),
             }
         }
-        return Err(anyhow!("Key definition missing"));
+        Err(anyhow!("Key definition missing"))
     }
 
     fn parse_binding(pair: pest::iterators::Pair<Rule>) -> Result<Binding> {

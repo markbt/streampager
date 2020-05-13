@@ -590,8 +590,8 @@ impl Screen {
             }
             render.bottom_line = render.top_line + file_line_rows.len();
             render.file_line_rows = file_line_rows;
-            for blank_row in row..file_view_height {
-                row_contents[blank_row] = RowContent::Blank;
+            for blank_row in row_contents.iter_mut().take(file_view_height).skip(row) {
+                *blank_row = RowContent::Blank;
             }
         }
 

@@ -347,7 +347,7 @@ impl Keymap {
                 .insert((modifiers, keycode), binding_config.binding.clone());
             if binding_config.visible {
                 self.keys
-                    .entry(binding_config.binding.clone())
+                    .entry(binding_config.binding)
                     .or_insert_with(Vec::new)
                     .push((modifiers, keycode));
             }

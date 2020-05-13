@@ -30,11 +30,17 @@ const TAB_SPACES: &str = "        ";
 
 const WRAPS_CACHE_SIZE: usize = 4;
 
+/// Line wrap in the cache are uniquely identified by index and wrapping mode.
+type WrapCacheIndex = (usize, WrappingMode);
+
+/// Line wraps in the cache are represented by a list of start and end offsets.
+type WrapCacheItem = Vec<(usize, usize)>;
+
 /// Represents a single line in a displayed file.
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
     spans: Box<[Span]>,
-    wraps: Arc<Mutex<LruCache<(usize, WrappingMode), Vec<(usize, usize)>>>>,
+    wraps: Arc<Mutex<LruCache<WrapCacheIndex, WrapCacheItem>>>,
 }
 
 /// Style that is being applied.
@@ -241,8 +247,9 @@ impl<'t> Iterator for SplitWords<'t> {
                 return Some((&text[..i], &text[i..]));
             }
             if ch == '-' {
-                self.text = &text[i + 1..];
-                return Some((&text[..i + 1], &text[i + 1..i + 1]));
+                let j = i + 1;
+                self.text = &text[j..];
+                return Some((&text[..j], &text[j..j]));
             }
         }
         let end = text.len();
