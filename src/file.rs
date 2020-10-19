@@ -176,11 +176,14 @@ impl FileData {
                                         newlines.push(offset + i);
                                     }
                                 }
+                                // Mark that the data has been written.  This
+                                // needs to be done here before we drop the
+                                // lock for `newlines`.
+                                offset += len;
+                                write.written(len);
+                                meta.length.fetch_add(len, Ordering::SeqCst);
                                 newlines.len()
                             };
-                            offset += len;
-                            write.written(len);
-                            meta.length.fetch_add(len, Ordering::SeqCst);
                             while line_count >= meta.needed_lines.load(Ordering::SeqCst) {
                                 // Enough data is loaded. Pause.
                                 waker_mutex = meta.waker.wait(waker_mutex).unwrap();
