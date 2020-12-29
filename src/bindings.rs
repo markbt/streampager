@@ -5,30 +5,40 @@ use indexmap::IndexMap;
 use termwiz::input::{KeyCode, Modifiers};
 use thiserror::Error;
 
+/// Errors specific to bindings.
 #[derive(Debug, Error)]
 pub enum BindingError {
+    /// Error when a binding is invalid.
     #[error("invalid: {0}")]
     Invalid(String),
 
+    /// Binding is missing a parameter.
     #[error("{0} missing parameter {1}")]
     MissingParameter(String, usize),
 
+    /// Integer parsing error.
     #[error("invalid integer: {0}")]
     InvalidInt(#[from] std::num::ParseIntError),
 
-    #[error("for {param} parameter {index}: {error}")]
+    /// Wrapped error within the context of a binding parameter.
+    #[error("for {binding} parameter {index}: {error}")]
     ForParameter {
+        /// Wrapped error.
         #[source] error: Box<BindingError>,
-        param: String,
+
+        /// Binding.
+        binding: String,
+
+        /// Parameter index.
         index: usize,
     },
 }
 
 impl BindingError {
-    fn for_parameter(self, param: String, index: usize) -> Self {
+    fn for_parameter(self, binding: String, index: usize) -> Self {
         Self::ForParameter {
             error: Box::new(self),
-            param,
+            binding,
             index,
         }
     }
