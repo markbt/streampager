@@ -5,8 +5,7 @@
 #![recursion_limit = "1024"]
 #![allow(clippy::comparison_chain)]
 
-use anyhow::bail;
-pub use anyhow::Result;
+pub use error::{Error, Result};
 use std::ffi::OsStr;
 use std::io::Read;
 use std::sync::Arc;
@@ -24,6 +23,7 @@ pub mod config;
 mod direct;
 mod display;
 mod event;
+pub mod error;
 mod file;
 mod help;
 #[cfg(feature = "keymap-file")]
@@ -84,22 +84,23 @@ fn termcaps() -> Result<Capabilities> {
     let hints = ProbeHints::new_from_env()
         .color_level(Some(ColorLevel::TrueColor))
         .mouse_reporting(Some(false));
-    let caps = Capabilities::new_with_hints(hints)?;
+    let caps = Capabilities::new_with_hints(hints).map_err(Error::Termwiz)?;
     if cfg!(unix) && caps.terminfo_db().is_none() {
-        bail!("terminfo database not found (is $TERM correct?)");
+        Err(Error::TerminfoDatabaseMissing)
+    } else {
+        Ok(caps)
     }
-    Ok(caps)
 }
 
 impl Pager {
     /// Build a `Pager` using the system terminal.
     pub fn new_using_system_terminal() -> Result<Self> {
-        Self::new_with_terminal_func(SystemTerminal::new)
+        Self::new_with_terminal_func(move |caps| SystemTerminal::new(caps).map_err(Error::Termwiz))
     }
 
     /// Build a `Pager` using the system stdio.
     pub fn new_using_stdio() -> Result<Self> {
-        Self::new_with_terminal_func(SystemTerminal::new_from_stdio)
+        Self::new_with_terminal_func(move |caps| SystemTerminal::new_from_stdio(caps).map_err(Error::Termwiz))
     }
 
     #[cfg(unix)]
@@ -108,7 +109,7 @@ impl Pager {
         input: &impl std::os::unix::io::AsRawFd,
         output: &impl std::os::unix::io::AsRawFd,
     ) -> Result<Self> {
-        Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output))
+        Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output).map_err(Error::Termwiz))
     }
 
     #[cfg(windows)]
@@ -125,7 +126,7 @@ impl Pager {
     ) -> Result<Self> {
         let caps = termcaps()?;
         let mut term = create_term(caps.clone())?;
-        term.set_raw_mode()?;
+        term.set_raw_mode().map_err(Error::Termwiz)?;
 
         let events = EventStream::new(term.waker());
         let files = Vec::new();

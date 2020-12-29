@@ -1,5 +1,4 @@
 //! Events.
-use anyhow::Error;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -7,12 +6,14 @@ use std::time::Duration;
 use termwiz::input::InputEvent;
 use termwiz::terminal::{Terminal, TerminalWaker};
 
+use crate::error::Error;
+
 /// An event.
 ///
 /// Events drive most of the main processing of `sp`.  This includes user
 /// input, state changes, and display refresh requests.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Event {
+pub enum Event {
     /// An input event.
     Input(InputEvent),
     /// A file has finished loading.
@@ -36,7 +37,7 @@ pub(crate) enum Event {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct UniqueInstance(Arc<AtomicBool>);
+pub struct UniqueInstance(Arc<AtomicBool>);
 
 impl UniqueInstance {
     pub(crate) fn new() -> UniqueInstance {
@@ -44,7 +45,7 @@ impl UniqueInstance {
     }
 }
 
-pub(crate) enum Envelope {
+pub enum Envelope {
     Normal(Event),
     Unique(Event, UniqueInstance),
 }
@@ -112,7 +113,7 @@ impl EventStream {
             }
 
             // The queue is empty.  Try to get an input event from the terminal.
-            match term.poll_input(wait)? {
+            match term.poll_input(wait).map_err(Error::Termwiz)? {
                 Some(InputEvent::Wake) => {}
                 Some(input_event) => return Ok(Some(Event::Input(input_event))),
                 None => return Ok(None),

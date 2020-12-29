@@ -1,10 +1,10 @@
 //! Prompt History.
-use anyhow::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use tempfile::NamedTempFile;
 
 use crate::display::Action;
+use crate::error::Error;
 use crate::prompt::PromptState;
 
 const HISTORY_LENGTH: usize = 1000;

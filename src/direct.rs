@@ -1,11 +1,5 @@
 //! Support for `InterfaceMode::Direct` and other modes using `Direct`.
 
-use crate::config::{InterfaceMode, WrappingMode};
-use crate::event::{Event, EventStream};
-use crate::file::File;
-use crate::line::Line;
-use crate::progress::Progress;
-use anyhow::Result;
 use bit_set::BitSet;
 use std::time::{Duration, Instant};
 use termwiz::input::InputEvent;
@@ -13,6 +7,13 @@ use termwiz::surface::change::Change;
 use termwiz::surface::Position;
 use termwiz::terminal::Terminal;
 use vec_map::VecMap;
+
+use crate::config::{InterfaceMode, WrappingMode};
+use crate::event::{Event, EventStream};
+use crate::error::{Error, Result};
+use crate::file::File;
+use crate::line::Line;
+use crate::progress::Progress;
 
 /// Return value of `direct`.
 #[derive(Debug)]
@@ -132,12 +133,12 @@ pub(crate) fn direct<T: Terminal>(
                 return Ok(Some(Outcome::RenderIncomplete));
             }
             let changes = state.render_pending_lines(w)?;
-            term.render(&changes)?;
+            term.render(&changes).map_err(Error::Termwiz)?;
         }
         Ok(None)
     };
 
-    let mut size = term.get_screen_size()?;
+    let mut size = term.get_screen_size().map_err(Error::Termwiz)?;
     let mut loaded = BitSet::with_capacity(loading.capacity());
     let mut remaining = output_files.len() + error_files.len();
     while remaining > 0 {
@@ -148,7 +149,7 @@ pub(crate) fn direct<T: Terminal>(
                 }
             }
             Some(Event::Input(InputEvent::Resized { .. })) => {
-                size = term.get_screen_size()?;
+                size = term.get_screen_size().map_err(Error::Termwiz)?;
             }
             Some(Event::Input(InputEvent::Key(key))) => {
                 use termwiz::input::{KeyCode::Char, Modifiers};
@@ -180,7 +181,7 @@ pub(crate) fn direct<T: Terminal>(
     }
 
     if delayed {
-        term.render(&state.render_pending_lines(size.cols)?)?;
+        term.render(&state.render_pending_lines(size.cols)?).map_err(Error::Termwiz)?;
     }
 
     Ok(Outcome::RenderComplete)

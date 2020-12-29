@@ -1,5 +1,4 @@
 //! Files.
-use anyhow::{Context, Error, Result};
 use memmap::Mmap;
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use std::borrow::Cow;
@@ -17,6 +16,7 @@ use std::time::Duration;
 
 use crate::buffer::Buffer;
 use crate::buffer_cache::BufferCache;
+use crate::error::{Error, Result};
 use crate::event::{Event, EventSender, UniqueInstance};
 
 /// Buffer size to use when loading and parsing files.  This is also the block
@@ -92,7 +92,7 @@ struct FileMeta {
 
 /// Event triggered by changes to a file on disk.
 #[derive(Clone, Copy, Debug)]
-enum FileEvent {
+pub enum FileEvent {
     /// File has been appended to.
     Append,
 
@@ -140,7 +140,7 @@ impl FileData {
         mut input: impl Read + Send + 'static,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<FileData, Error> {
+    ) -> Result<FileData> {
         let buffers = Arc::new(RwLock::new(Vec::new()));
         thread::spawn({
             let buffers = buffers.clone();
@@ -209,7 +209,7 @@ impl FileData {
         path: P,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<FileData, Error> {
+    ) -> Result<FileData> {
         let path = path.as_ref();
         let mut file = Some(StdFile::open(path)?);
         let (events, event_rx) = mpsc::channel();
@@ -406,7 +406,7 @@ impl FileData {
         file: StdFile,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<FileData, Error> {
+    ) -> Result<FileData> {
         // We can't mmap empty files, so just return an empty filedata if the
         // file's length is 0.
         if file.metadata()?.len() == 0 {
@@ -447,7 +447,7 @@ impl FileData {
         data: impl Into<Cow<'static, [u8]>>,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<FileData, Error> {
+    ) -> Result<FileData> {
         let data = Arc::new(data.into());
         thread::spawn({
             let data = data.clone();
@@ -557,7 +557,7 @@ impl File {
         stream: impl Read + Send + 'static,
         title: &str,
         event_sender: EventSender,
-    ) -> Result<File, Error> {
+    ) -> Result<File> {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
         let data = FileData::new_streamed(stream, meta.clone(), event_sender)?;
         Ok(File::new(data, meta))
@@ -567,10 +567,10 @@ impl File {
         index: usize,
         filename: &OsStr,
         event_sender: EventSender,
-    ) -> Result<File, Error> {
+    ) -> Result<File> {
         let title = filename.to_string_lossy().into_owned();
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
-        let mut file = StdFile::open(filename).context(title)?;
+        let mut file = StdFile::open(filename).map_err(|err| Error::from(err).with_file(title))?;
         // Determine whether this file is a real file, or some kind of pipe, by
         // attempting to do a no-op seek.  If it fails, we won't be able to seek
         // around and load parts of the file at will, so treat it as a stream.
@@ -587,10 +587,10 @@ impl File {
         index: usize,
         filename: &OsStr,
         event_sender: EventSender,
-    ) -> Result<File, Error> {
+    ) -> Result<File> {
         let title = filename.to_string_lossy().into_owned();
         let meta = Arc::new(FileMeta::new(index, title.clone()));
-        let mut file = StdFile::open(filename).context(title)?;
+        let mut file = StdFile::open(filename).map_err(|err| Error::from(err).with_file(title))?;
         // Determine whether this file is a real file, or some kind of pipe, by
         // attempting to do a no-op seek.  If it fails, assume we can't mmap
         // it.
@@ -608,7 +608,7 @@ impl File {
         args: I,
         title: &str,
         event_sender: EventSender,
-    ) -> Result<(File, File), Error>
+    ) -> Result<(File, File)>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -620,7 +620,7 @@ impl File {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .context(command.to_string_lossy().into_owned())?;
+            .map_err(|err| Error::from(err).with_command(command))?;
         let out = process.stdout.take().unwrap();
         let err = process.stderr.take().unwrap();
         let out_file = File::new_streamed(index, out, &title, event_sender.clone())?;
@@ -650,7 +650,7 @@ impl File {
         title: &str,
         data: impl Into<Cow<'static, [u8]>>,
         event_sender: EventSender,
-    ) -> Result<File, Error> {
+    ) -> Result<File> {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
         let data = FileData::new_static(data, meta.clone(), event_sender)?;
         Ok(File::new(data, meta))

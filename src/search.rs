@@ -1,5 +1,4 @@
 //! Searching.
-use anyhow::Error;
 use bit_set::BitSet;
 use lazy_static::lazy_static;
 use regex::bytes::{NoExpand, Regex};
@@ -15,6 +14,7 @@ use termwiz::surface::change::Change;
 use termwiz::surface::Position;
 use unicode_width::UnicodeWidthStr;
 
+use crate::error::Error;
 use crate::event::{Event, EventSender};
 use crate::file::File;
 use crate::overstrike;

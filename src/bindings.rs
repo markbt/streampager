@@ -1,9 +1,40 @@
 //! Key bindings.
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Context, Result};
 use indexmap::IndexMap;
 use termwiz::input::{KeyCode, Modifiers};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum BindingError {
+    #[error("invalid: {0}")]
+    Invalid(String),
+
+    #[error("{0} missing parameter {1}")]
+    MissingParameter(String, usize),
+
+    #[error("invalid integer: {0}")]
+    InvalidInt(#[from] std::num::ParseIntError),
+
+    #[error("for {param} parameter {index}: {error}")]
+    ForParameter {
+        #[source] error: Box<BindingError>,
+        param: String,
+        index: usize,
+    },
+}
+
+impl BindingError {
+    fn for_parameter(self, param: String, index: usize) -> Self {
+        Self::ForParameter {
+            error: Box::new(self),
+            param,
+            index,
+        }
+    }
+}
+
+type Result<T> = std::result::Result<T, BindingError>;
 
 /// A key binding category.
 ///
@@ -183,10 +214,10 @@ impl Binding {
         let param_usize = |index| -> Result<usize> {
             let value: &String = params
                 .get(index)
-                .ok_or_else(|| anyhow!("{}: missing parameter {}", ident, index))?;
+                .ok_or_else(|| BindingError::MissingParameter(ident.clone(), index))?;
             let value = value
                 .parse::<usize>()
-                .with_context(|| format!("{}: parameter {}", ident, index))?;
+                .map_err(|err| BindingError::from(err).for_parameter(ident.clone(), index))?;
             Ok(value)
         };
 

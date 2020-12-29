@@ -26,7 +26,6 @@
 //!
 //! ```
 
-use anyhow::Error;
 use std::cmp::{max, min};
 use std::sync::Arc;
 use termwiz::cell::{CellAttributes, Intensity};
@@ -40,6 +39,7 @@ use crate::command;
 use crate::config::{Config, WrappingMode};
 use crate::display::Action;
 use crate::display::Capabilities;
+use crate::error::Error;
 use crate::event::EventSender;
 use crate::file::File;
 use crate::line::Line;

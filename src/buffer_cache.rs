@@ -1,5 +1,4 @@
 //! Buffer Cache.
-use anyhow::Error;
 use lru::LruCache;
 use std::borrow::Cow;
 use std::fs::File as StdFile;
@@ -7,6 +6,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use crate::buffer::Buffer;
+use crate::error::Error;
 
 pub(crate) struct BufferCache {
     path: PathBuf,
@@ -151,7 +151,6 @@ fn fill_buffer(
 #[cfg(test)]
 mod test {
     use super::*;
-    use anyhow::Error;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
