@@ -1,5 +1,5 @@
 //! Lines in a file.
-use lru_cache::LruCache;
+use lru::LruCache;
 use regex::bytes::{NoExpand, Regex};
 use smallvec::SmallVec;
 use std::borrow::Cow;
@@ -737,7 +737,7 @@ impl Line {
                 let rows = self.make_wrap(width, wrapping);
                 let (start, end) = rows.get(row).unwrap_or(&(0, 0));
                 let (start, end) = (*start, *end);
-                wraps.insert((width, wrapping), rows);
+                wraps.put((width, wrapping), rows);
                 (start, end)
             }
         };
@@ -792,7 +792,7 @@ impl Line {
         }
         let rows = self.make_wrap(width, wrapping);
         let height = rows.len();
-        wraps.insert((width, wrapping), rows);
+        wraps.put((width, wrapping), rows);
         height
     }
 }

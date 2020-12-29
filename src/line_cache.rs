@@ -1,7 +1,7 @@
 //! Line Cache
 //!
 //! An LRU-cache for lines.
-use lru_cache::LruCache;
+use lru::LruCache;
 use regex::bytes::Regex;
 use std::borrow::Cow;
 
@@ -26,7 +26,7 @@ impl LineCache {
         regex: Option<&Regex>,
     ) -> Option<Cow<'a, Line>> {
         let cache = &mut self.0;
-        if cache.contains_key(&line_index) {
+        if cache.contains(&line_index) {
             Some(Cow::Borrowed(cache.get_mut(&line_index).unwrap()))
         } else {
             let line = file.with_line(line_index, |line| {
@@ -40,7 +40,7 @@ impl LineCache {
                 // Don't cache the line if it's the last line of the file
                 // and the file is still loading.  It might not be complete.
                 if file.loaded() || line_index + 1 < file.lines() {
-                    cache.insert(line_index, line);
+                    cache.put(line_index, line);
                     Some(Cow::Borrowed(cache.get_mut(&line_index).unwrap()))
                 } else {
                     Some(Cow::Owned(line))

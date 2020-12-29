@@ -1,6 +1,6 @@
 //! Buffer Cache.
 use anyhow::Error;
-use lru_cache::LruCache;
+use lru::LruCache;
 use std::borrow::Cow;
 use std::fs::File as StdFile;
 use std::io::{Read, Seek, SeekFrom};
@@ -59,7 +59,7 @@ impl BufferCache {
                 0,
                 self.block_size,
             )?;
-            self.cache.insert(block_index, buffer);
+            self.cache.put(block_index, buffer);
         }
         Ok(self.cache.get_mut(&block_index))
     }
