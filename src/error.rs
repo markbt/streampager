@@ -13,47 +13,47 @@ pub type Result<T> = StdResult<T, Error>;
 #[derive(Debug, Error)]
 pub enum Error {
     /// Comes from [Termwiz](https://crates.io/crates/termwiz).
-    #[error("termwiz: {0}")]
+    #[error("terminal error")]
     Termwiz(#[source] anyhow::Error),
 
     /// Comes from [Regex](https://github.com/rust-lang/regex).
-    #[error("regex: {0}")]
+    #[error("regex error")]
     Regex(#[from] regex::Error),
 
     /// Generic I/O error.
-    #[error("i/o: {0}")]
+    #[error("i/o error")]
     Io(#[from] std::io::Error),
 
     /// Returned when persisting a temporary file fails.
-    #[error("temporary file persistence: {0}")]
+    #[error(transparent)]
     TempfilePersist(#[from] tempfile::PersistError),
 
     /// Keymap-related error.
-    #[error("keymap: {0}")]
+    #[error("keymap error")]
     Keymap(#[from] crate::keymaps::error::KeymapError),
 
     /// Binding-related error.
-    #[error("binding: {0}")]
+    #[error("keybinding error")]
     Binding(#[from] crate::bindings::BindingError),
 
     /// Generic formatting error.
-    #[error("formatting: {0}")]
+    #[error(transparent)]
     Fmt(#[from] std::fmt::Error),
 
     /// Receive error on a channel.
-    #[error("channel: {0}")]
+    #[error("channel error")]
     ChannelRecv(#[from] RecvError),
 
     /// (Try)Receive error on a channel.
-    #[error("channel: {0}")]
+    #[error("channel error")]
     ChannelTryRecv(#[from] TryRecvError),
 
     /// Send error on a FileEvent channel.
-    #[error("channel: {0}")]
+    #[error("channel error")]
     ChannelSendFileEvent(#[from] SendError<crate::file::FileEvent>),
 
     /// Send error on an Envelope channel.
-    #[error("channel: {0}")]
+    #[error("channel error")]
     ChannelSendEnvelope(#[from] SendError<crate::event::Envelope>),
 
     /// Error returned if the terminfo database is missing.
@@ -61,7 +61,7 @@ pub enum Error {
     TerminfoDatabaseMissing,
 
     /// Wrapped error within the context of a command.
-    #[error("with command `{command}`: {error}")]
+    #[error("error running command '{command}'")]
     WithCommand {
         /// Wrapped error.
         #[source]
@@ -72,7 +72,7 @@ pub enum Error {
     },
 
     /// Wrapped error within the context of a file.
-    #[error("with file {file}: {error}")]
+    #[error("error loading file '{file}'")]
     WithFile {
         /// Wrapped error.
         #[source]

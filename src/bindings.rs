@@ -9,7 +9,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum BindingError {
     /// Error when a binding is invalid.
-    #[error("invalid: {0}")]
+    #[error("invalid keybinding: {0}")]
     Invalid(String),
 
     /// Binding is missing a parameter.
@@ -17,11 +17,11 @@ pub enum BindingError {
     MissingParameter(String, usize),
 
     /// Integer parsing error.
-    #[error("invalid integer: {0}")]
+    #[error("invalid integer")]
     InvalidInt(#[from] std::num::ParseIntError),
 
     /// Wrapped error within the context of a binding parameter.
-    #[error("for {binding} parameter {index}: {error}")]
+    #[error("invalid {binding} parameter {index}")]
     ForParameter {
         /// Wrapped error.
         #[source]

@@ -24,15 +24,15 @@ pub enum KeymapError {
     UnknownKey(String),
 
     /// Parsing error.
-    #[error("parse: {0}")]
+    #[error("parse error")]
     Parse(#[from] pest::error::Error<crate::keymap_file::Rule>),
 
     /// Error related to parsing a binding within a keymap.
-    #[error("binding: {0}")]
+    #[error("keybinding error")]
     Binding(#[from] crate::bindings::BindingError),
 
     /// Wrapped error within the context of a file.
-    #[error("with file {file}: {error}")]
+    #[error("error loading file '{file}'")]
     WithFile {
         /// Wrapped error.
         #[source]
