@@ -1,9 +1,11 @@
 //! The Ruler
+
 use std::cmp::{max, min};
 use std::fmt::Write;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+
 use termwiz::surface::change::Change;
 use unicode_width::UnicodeWidthStr;
 

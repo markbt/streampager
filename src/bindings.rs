@@ -24,7 +24,8 @@ pub enum BindingError {
     #[error("for {binding} parameter {index}: {error}")]
     ForParameter {
         /// Wrapped error.
-        #[source] error: Box<BindingError>,
+        #[source]
+        error: Box<BindingError>,
 
         /// Binding.
         binding: String,

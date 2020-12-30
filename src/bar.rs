@@ -1,6 +1,8 @@
 //! A horizontal bar on the screen.
+
 use std::cmp::min;
 use std::sync::Arc;
+
 use termwiz::cell::CellAttributes;
 use termwiz::color::AnsiColor;
 use termwiz::surface::change::Change;

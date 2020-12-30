@@ -3,8 +3,6 @@
 //! A pager for command output or large files.
 #![warn(missing_docs)]
 
-use anyhow::{bail, Error};
-use clap::ArgMatches;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
@@ -13,6 +11,9 @@ use std::os::unix::io::{FromRawFd, RawFd};
 #[cfg(unix)]
 use std::str::FromStr;
 use std::time::Duration;
+
+use anyhow::{bail, Error};
+use clap::ArgMatches;
 use termwiz::istty::IsTty;
 use vec_map::VecMap;
 

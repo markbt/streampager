@@ -1,6 +1,8 @@
 //! Prompt History.
+
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
+
 use tempfile::NamedTempFile;
 
 use crate::display::Action;

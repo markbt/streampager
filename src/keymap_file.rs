@@ -4,10 +4,8 @@ use pest::Parser;
 use pest_derive::Parser;
 use termwiz::input::{KeyCode, Modifiers};
 
-use crate::{
-    bindings::{Binding, BindingConfig, BindingError},
-    keymaps::error::{KeymapError, Result},
-};
+use crate::bindings::{Binding, BindingConfig, BindingError};
+use crate::keymaps::error::{KeymapError, Result};
 
 #[derive(Parser)]
 #[grammar = "keymaps/keymap.pest"]

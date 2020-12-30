@@ -1,9 +1,10 @@
 //! Commands
 //!
 //! Commands the user can invoke.
+
 use crate::display::Action;
-use crate::event::EventSender;
 use crate::error::Error;
+use crate::event::EventSender;
 use crate::prompt::Prompt;
 use crate::screen::Screen;
 use crate::search::{MatchMotion, Search, SearchKind};

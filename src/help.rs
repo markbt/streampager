@@ -1,4 +1,5 @@
 //! Help screen
+
 use std::fmt::Write;
 
 use termwiz::input::{KeyCode, Modifiers};

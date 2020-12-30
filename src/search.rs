@@ -1,13 +1,15 @@
 //! Searching.
-use bit_set::BitSet;
-use lazy_static::lazy_static;
-use regex::bytes::{NoExpand, Regex};
+
 use std::borrow::Cow;
 use std::cmp::min;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time;
+
+use bit_set::BitSet;
+use lazy_static::lazy_static;
+use regex::bytes::{NoExpand, Regex};
 use termwiz::cell::CellAttributes;
 use termwiz::color::AnsiColor;
 use termwiz::surface::change::Change;

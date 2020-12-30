@@ -1,8 +1,10 @@
 //! Events.
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
+
 use termwiz::input::InputEvent;
 use termwiz::terminal::{Terminal, TerminalWaker};
 

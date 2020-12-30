@@ -1,6 +1,8 @@
 //! Prompts for input.
+
 use std::char;
 use std::fmt::Write;
+
 use termwiz::cell::{AttributeChange, CellAttributes};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
@@ -8,8 +10,8 @@ use termwiz::surface::change::Change;
 use termwiz::surface::Position;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::error::Error;
 use crate::display::Action;
+use crate::error::Error;
 use crate::prompt_history::PromptHistory;
 use crate::screen::Screen;
 use crate::util;

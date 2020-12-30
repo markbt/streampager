@@ -1,6 +1,5 @@
 //! Files.
-use memmap::Mmap;
-use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
+
 use std::borrow::Cow;
 use std::cmp::{max, min};
 use std::ffi::OsStr;
@@ -13,6 +12,9 @@ use std::sync::mpsc;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
+
+use memmap::Mmap;
+use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::buffer::Buffer;
 use crate::buffer_cache::BufferCache;

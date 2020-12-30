@@ -1,9 +1,9 @@
 //! Error types.
-use std::{
-    ffi::OsStr,
-    result::Result as StdResult,
-    sync::mpsc::{RecvError,  SendError, TryRecvError},
-};
+
+use std::ffi::OsStr;
+use std::result::Result as StdResult;
+use std::sync::mpsc::{RecvError, SendError, TryRecvError};
+
 use thiserror::Error;
 
 /// Convenient return type for functions.
@@ -64,7 +64,8 @@ pub enum Error {
     #[error("with command `{command}`: {error}")]
     WithCommand {
         /// Wrapped error.
-        #[source] error: Box<Self>,
+        #[source]
+        error: Box<Self>,
 
         /// Command the error is about.
         command: String,
@@ -74,7 +75,8 @@ pub enum Error {
     #[error("with file {file}: {error}")]
     WithFile {
         /// Wrapped error.
-        #[source] error: Box<Self>,
+        #[source]
+        error: Box<Self>,
 
         /// File the error is about.
         file: String,

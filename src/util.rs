@@ -1,5 +1,7 @@
 //! Utilities.
+
 use std::borrow::Cow;
+
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 

@@ -7,6 +7,7 @@
 //! Progress indicator pages are blocks of text terminated by an ASCII form-feed
 //! character.  The progress indicator will display the most recently received
 //! page.
+
 use std::io::{BufRead, BufReader, Read};
 use std::sync::{Arc, RwLock};
 use std::thread;

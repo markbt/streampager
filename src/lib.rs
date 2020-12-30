@@ -5,10 +5,11 @@
 #![recursion_limit = "1024"]
 #![allow(clippy::comparison_chain)]
 
-pub use error::{Error, Result};
 use std::ffi::OsStr;
 use std::io::Read;
 use std::sync::Arc;
+
+pub use error::{Error, Result};
 use termwiz::caps::ColorLevel;
 use termwiz::caps::{Capabilities, ProbeHints};
 use termwiz::terminal::{SystemTerminal, Terminal};
@@ -22,8 +23,8 @@ mod command;
 pub mod config;
 mod direct;
 mod display;
-mod event;
 pub mod error;
+mod event;
 mod file;
 mod help;
 #[cfg(feature = "keymap-file")]
@@ -100,7 +101,9 @@ impl Pager {
 
     /// Build a `Pager` using the system stdio.
     pub fn new_using_stdio() -> Result<Self> {
-        Self::new_with_terminal_func(move |caps| SystemTerminal::new_from_stdio(caps).map_err(Error::Termwiz))
+        Self::new_with_terminal_func(move |caps| {
+            SystemTerminal::new_from_stdio(caps).map_err(Error::Termwiz)
+        })
     }
 
     #[cfg(unix)]
@@ -109,7 +112,9 @@ impl Pager {
         input: &impl std::os::unix::io::AsRawFd,
         output: &impl std::os::unix::io::AsRawFd,
     ) -> Result<Self> {
-        Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output).map_err(Error::Termwiz))
+        Self::new_with_terminal_func(move |caps| {
+            SystemTerminal::new_with(caps, input, output).map_err(Error::Termwiz)
+        })
     }
 
     #[cfg(windows)]

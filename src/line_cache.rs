@@ -1,9 +1,11 @@
 //! Line Cache
 //!
 //! An LRU-cache for lines.
+
+use std::borrow::Cow;
+
 use lru::LruCache;
 use regex::bytes::Regex;
-use std::borrow::Cow;
 
 use crate::file::File;
 use crate::line::Line;

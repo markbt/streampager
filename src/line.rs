@@ -1,11 +1,13 @@
 //! Lines in a file.
-use lru::LruCache;
-use regex::bytes::{NoExpand, Regex};
-use smallvec::SmallVec;
+
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::str;
 use std::sync::{Arc, Mutex};
+
+use lru::LruCache;
+use regex::bytes::{NoExpand, Regex};
+use smallvec::SmallVec;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::escape::csi::{Sgr, CSI};

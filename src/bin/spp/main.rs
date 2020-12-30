@@ -3,10 +3,11 @@
 //! A pager for command output.
 #![warn(missing_docs)]
 
-use anyhow::{bail, Error};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write;
+
+use anyhow::{bail, Error};
 
 use streampager::Pager;
 

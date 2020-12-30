@@ -1,7 +1,8 @@
 //! Support for `InterfaceMode::Direct` and other modes using `Direct`.
 
-use bit_set::BitSet;
 use std::time::{Duration, Instant};
+
+use bit_set::BitSet;
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
 use termwiz::surface::Position;
@@ -9,8 +10,8 @@ use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
 use crate::config::{InterfaceMode, WrappingMode};
-use crate::event::{Event, EventStream};
 use crate::error::{Error, Result};
+use crate::event::{Event, EventStream};
 use crate::file::File;
 use crate::line::Line;
 use crate::progress::Progress;
@@ -181,7 +182,8 @@ pub(crate) fn direct<T: Terminal>(
     }
 
     if delayed {
-        term.render(&state.render_pending_lines(size.cols)?).map_err(Error::Termwiz)?;
+        term.render(&state.render_pending_lines(size.cols)?)
+            .map_err(Error::Termwiz)?;
     }
 
     Ok(Outcome::RenderComplete)

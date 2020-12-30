@@ -1,4 +1,7 @@
+//! Errors specific to keymaps.
+
 use std::path::{Path, PathBuf};
+
 use thiserror::Error;
 
 /// Errors specific to keymaps.
@@ -32,11 +35,12 @@ pub enum KeymapError {
     #[error("with file {file}: {error}")]
     WithFile {
         /// Wrapped error.
-        #[source] error: Box<KeymapError>,
+        #[source]
+        error: Box<KeymapError>,
 
         /// File the error is about.
         file: PathBuf,
-    }
+    },
 }
 
 impl KeymapError {

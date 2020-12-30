@@ -28,6 +28,7 @@
 
 use std::cmp::{max, min};
 use std::sync::Arc;
+
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;

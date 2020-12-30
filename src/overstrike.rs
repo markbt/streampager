@@ -10,6 +10,7 @@
 
 use std::borrow::Cow;
 use std::str;
+
 use unicode_segmentation::{GraphemeCursor, UnicodeSegmentation};
 
 /// An overstrike style.

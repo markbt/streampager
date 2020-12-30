@@ -5,6 +5,7 @@ use termwiz::input::{KeyCode, Modifiers};
 use crate::bindings::{BindingConfig, Keymap};
 
 pub mod error;
+
 use error::{KeymapError, Result};
 
 // Static data to generate a keymap.

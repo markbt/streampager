@@ -1,11 +1,13 @@
 //! Fillable buffer
 //!
 //! Buffers used for loading streams.
-use memmap::MmapMut;
+
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
+
+use memmap::MmapMut;
 
 /// Fillable buffer
 ///

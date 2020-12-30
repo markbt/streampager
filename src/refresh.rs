@@ -1,6 +1,8 @@
 //! Track screen refresh regions.
-use bit_set::BitSet;
+
 use std::cmp::{max, min};
+
+use bit_set::BitSet;
 
 /// Tracks which parts of the screen need to be refreshed.
 #[derive(Clone, Debug, Eq, PartialEq)]
