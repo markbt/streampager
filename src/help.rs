@@ -1,11 +1,11 @@
 //! Help screen
 use std::fmt::Write;
 
-use anyhow::Result;
 use termwiz::input::{KeyCode, Modifiers};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::bindings::{Category, Keymap};
+use crate::error::Result;
 
 fn write_key_names(text: &mut String, keys: &[(Modifiers, KeyCode)]) -> Result<usize> {
     let mut w = 0;

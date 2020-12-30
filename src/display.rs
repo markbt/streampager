@@ -1,5 +1,4 @@
 //! Manage the Display.
-use anyhow::Error;
 use scopeguard::guard;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -17,6 +16,7 @@ use crate::command;
 use crate::config::Config;
 use crate::direct;
 use crate::event::{Event, EventStream, UniqueInstance};
+use crate::error::Error;
 use crate::file::File;
 use crate::help::help_text;
 use crate::progress::Progress;
@@ -185,7 +185,7 @@ pub(crate) fn start(
     match outcome {
         direct::Outcome::RenderComplete | direct::Outcome::Interrupted => return Ok(()),
         direct::Outcome::RenderIncomplete => (),
-        direct::Outcome::RenderNothing => term.enter_alternate_screen()?,
+        direct::Outcome::RenderNothing => term.enter_alternate_screen().map_err(Error::Termwiz)?,
     }
 
     let overlay_height = AtomicUsize::new(0);
@@ -220,10 +220,10 @@ pub(crate) fn start(
     let refresh_unique = UniqueInstance::new();
     {
         let screen = screens.current();
-        let size = term.get_screen_size()?;
+        let size = term.get_screen_size().map_err(Error::Termwiz)?;
         screen.resize(size.cols, size.rows);
         screen.maybe_load_more();
-        term.render(&screen.render(&caps)?)?;
+        term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
     }
     loop {
         // Listen for an event or input.  If we are animating, put a timeout on the wait.
@@ -242,25 +242,25 @@ pub(crate) fn start(
             match event {
                 None => screen.dispatch_animation()?,
                 Some(Event::Render) => {
-                    term.render(&screen.render(&caps)?)?;
+                    term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     None
                 }
                 Some(Event::Input(InputEvent::Resized { .. })) => {
-                    let size = term.get_screen_size()?;
+                    let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
-                    term.render(&screen.render(&caps)?)?;
+                    term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     None
                 }
                 Some(Event::Refresh) => {
-                    let size = term.get_screen_size()?;
+                    let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
-                    term.render(&screen.render(&caps)?)?;
+                    term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     None
                 }
                 Some(Event::Progress) => {
                     screen.refresh_progress();
-                    term.render(&screen.render(&caps)?)?;
+                    term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     None
                 }
                 Some(Event::Input(InputEvent::Key(key))) => {
@@ -312,7 +312,7 @@ pub(crate) fn start(
             match current_action {
                 Action::Run(mut f) => action = f(screens.current())?,
                 Action::Change(c) => {
-                    term.render(&[c])?;
+                    term.render(&[c]).map_err(Error::Termwiz)?;
                 }
                 Action::Render => event_sender.send_unique(Event::Render, &render_unique)?,
                 Action::Refresh => event_sender.send_unique(Event::Refresh, &refresh_unique)?,
@@ -325,10 +325,10 @@ pub(crate) fn start(
                     if screens.current_index < screens.screens.len() - 1 {
                         screens.current_index += 1;
                         let screen = screens.current();
-                        let size = term.get_screen_size()?;
+                        let size = term.get_screen_size().map_err(Error::Termwiz)?;
                         screen.resize(size.cols, size.rows);
                         screen.refresh();
-                        term.render(&screen.render(&caps)?)?;
+                        term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     }
                 }
                 Action::PreviousFile => {
@@ -336,10 +336,10 @@ pub(crate) fn start(
                     if screens.current_index > 0 {
                         screens.current_index -= 1;
                         let screen = screens.current();
-                        let size = term.get_screen_size()?;
+                        let size = term.get_screen_size().map_err(Error::Termwiz)?;
                         screen.resize(size.cols, size.rows);
                         screen.refresh();
-                        term.render(&screen.render(&caps)?)?;
+                        term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     }
                 }
                 Action::ShowHelp => {
@@ -354,20 +354,20 @@ pub(crate) fn start(
                         )?,
                         config.clone(),
                     )?;
-                    let size = term.get_screen_size()?;
+                    let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
-                    term.render(&screen.render(&caps)?)?;
+                    term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                     screens.overlay = Some(screen);
                     screens.overlay_index = overlay_index;
                 }
                 Action::ClearOverlay => {
                     screens.overlay = None;
                     let screen = screens.current();
-                    let size = term.get_screen_size()?;
+                    let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
-                    term.render(&screen.render(&caps)?)?;
+                    term.render(&screen.render(&caps)?).map_err(Error::Termwiz)?;
                 }
                 Action::Quit => {
                     let screen = screens.current();

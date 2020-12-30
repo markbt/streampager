@@ -41,5 +41,6 @@ fn start_command() -> Result<(), Error> {
         .collect::<Vec<_>>()
         .join(" ");
     pager.add_subprocess(&args[1], &args[2..], &title)?;
-    pager.run()
+    pager.run()?;
+    Ok(())
 }

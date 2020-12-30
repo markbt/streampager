@@ -179,7 +179,8 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
             }
         }
     }
-    pager.run()
+    pager.run()?;
+    Ok(())
 }
 
 #[cfg(unix)]

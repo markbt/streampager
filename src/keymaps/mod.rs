@@ -1,9 +1,11 @@
 //! Keymaps
 
-use anyhow::{anyhow, Result};
 use termwiz::input::{KeyCode, Modifiers};
 
 use crate::bindings::{BindingConfig, Keymap};
+
+pub mod error;
+use error::{KeymapError, Result};
 
 // Static data to generate a keymap.
 type KeymapData = &'static [((Modifiers, KeyCode), BindingConfig)];
@@ -31,19 +33,17 @@ pub(crate) fn load(name: &str) -> Result<Keymap> {
 
     #[cfg(feature = "keymap-file")]
     {
-        use anyhow::Context;
-
         if let Some(mut path) = dirs::config_dir() {
             path.push("streampager");
             path.push("keymaps");
             path.push(name);
             if let Ok(keymap_data) = std::fs::read_to_string(&path) {
                 let keymap_file = crate::keymap_file::KeymapFile::parse(&keymap_data)
-                    .with_context(|| format!("failed to parse keymap from {:?}", path))?;
+                    .map_err(|err| err.with_file(path))?;
                 return Ok(Keymap::from(keymap_file.iter()));
             }
         }
     }
 
-    Err(anyhow!("Keymap not found: {}", name))
+    Err(KeymapError::MissingKeymap(name.to_string()))
 }

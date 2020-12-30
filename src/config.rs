@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
 use serde::Deserialize;
 
 use crate::bindings::Keymap;
+use crate::error::Result;
 
 /// Specify what interface to use.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Deserialize)]

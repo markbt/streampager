@@ -50,6 +50,7 @@ toml = "0.5.6"
 unicode-segmentation = "1.2.1"
 unicode-width = "0.1.5"
 vec_map = "0.8.1"
+thiserror = "1.0.23"
 
 [build-dependencies]
 clap = "2.32.0"

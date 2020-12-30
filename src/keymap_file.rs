@@ -1,11 +1,13 @@
 //! Keymaps
 
-use anyhow::{anyhow, Result};
 use pest::Parser;
 use pest_derive::Parser;
 use termwiz::input::{KeyCode, Modifiers};
 
-use crate::bindings::{Binding, BindingConfig};
+use crate::{
+    bindings::{Binding, BindingConfig, BindingError},
+    keymaps::error::{KeymapError, Result},
+};
 
 #[derive(Parser)]
 #[grammar = "keymaps/keymap.pest"]
@@ -114,7 +116,7 @@ impl KeymapFile {
                     "CTRL" => modifiers |= Modifiers::CTRL,
                     "ALT" => modifiers |= Modifiers::ALT,
                     "SUPER" => modifiers |= Modifiers::SUPER,
-                    unknown => return Err(anyhow!("Unknown modifier: {}", unknown)),
+                    unknown => return Err(KeymapError::UnknownModifier(unknown.to_string())),
                 },
                 Rule::keycode => {
                     let value = item
@@ -130,7 +132,7 @@ impl KeymapFile {
                                 .expect("keycode should contain a character"),
                         ),
                         Rule::ident => Self::parse_keycode(value.as_str())
-                            .ok_or_else(|| anyhow!("Unrecognised key: {}", value.as_str()))?,
+                            .ok_or_else(|| KeymapError::UnknownKey(value.as_str().to_string()))?,
                         other => panic!("Unexpected rule inside keycode: {:?}", other),
                     };
                     return Ok(((modifiers, keycode), visible));
@@ -138,7 +140,7 @@ impl KeymapFile {
                 other => panic!("Unexpected rule inside key: {:?}", other),
             }
         }
-        Err(anyhow!("Key definition missing"))
+        Err(KeymapError::MissingDefinition)
     }
 
     fn parse_binding(pair: pest::iterators::Pair<Rule>) -> Result<Binding> {
@@ -152,7 +154,7 @@ impl KeymapFile {
                 other => panic!("Unexpected rule inside binding: {:?}", other),
             }
         }
-        let ident = ident.ok_or_else(|| anyhow!("invalid binding: {}", span))?;
+        let ident = ident.ok_or_else(|| BindingError::Invalid(span.into()))?;
         Ok(Binding::parse(ident, params)?)
     }
 
