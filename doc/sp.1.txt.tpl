@@ -160,4 +160,4 @@ http://github.com/markbt/streampager
 
 Authors
 -------
-Mark Thomas <markbt@efaref.net>
+Mark Juggurnauth-Thomas <markbt@efaref.net>

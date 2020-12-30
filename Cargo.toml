@@ -1,11 +1,9 @@
 [package]
 name = "streampager"
-version = "0.8.0"
-authors = ["Mark Thomas <markbt@efaref.net>"]
+version = "0.9.0"
+authors = ["Mark Juggurnauth-Thomas <markbt@efaref.net>"]
 edition = "2018"
 description = "streampager is a pager for command output or large files"
-documentation = "https://github.com/markbt/streampager"
-homepage = "https://github.com/markbt/streampager"
 repository = "https://github.com/markbt/streampager"
 readme = "README.md"
 keywords = ["pager", "less", "more"]
