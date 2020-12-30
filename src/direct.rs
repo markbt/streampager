@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use bit_set::BitSet;
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
-use termwiz::surface::Position;
+use termwiz::surface::{CursorShape, Position};
 use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
@@ -155,6 +155,7 @@ pub(crate) fn direct<T: Terminal>(
                 use termwiz::input::{KeyCode::Char, Modifiers};
                 match (key.modifiers, key.key) {
                     (Modifiers::NONE, Char('q')) | (Modifiers::CTRL, Char('C')) => {
+                        term.render(&state.abort()).map_err(Error::Termwiz)?;
                         return Ok(Outcome::Interrupted);
                     }
                     (Modifiers::NONE, Char('f')) | (Modifiers::NONE, Char(' ')) => {
@@ -207,6 +208,7 @@ struct StreamingLines {
     progress_lines: Vec<Vec<u8>>,
     erase_row_count: usize,
     pending_changes: bool,
+    cursor_hidden: bool,
 }
 
 impl StreamingLines {
@@ -276,7 +278,25 @@ impl StreamingLines {
 
         let new_output_row_count = render(self.new_output_lines.iter())?;
         let error_row_count = render(self.error_lines.iter())?;
-        let progress_row_count = render(self.progress_lines.iter())?;
+        let mut progress_row_count = render(self.progress_lines.iter())?;
+
+        // Don't render the last newline after progress, and hide the
+        // cursor while progress is being shown.
+        if progress_row_count > 0 {
+            changes.pop();
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(0),
+                y: Position::Relative(0),
+            });
+            if !self.cursor_hidden {
+                changes.push(Change::CursorShape(CursorShape::Hidden));
+                self.cursor_hidden = true;
+            }
+            progress_row_count -= 1;
+        } else if self.cursor_hidden {
+            changes.push(Change::CursorShape(CursorShape::Default));
+            self.cursor_hidden = false;
+        }
 
         // Step 3: Update internal state.
         self.past_output_row_count += new_output_row_count;
@@ -285,6 +305,19 @@ impl StreamingLines {
         self.pending_changes = false;
 
         Ok(changes)
+    }
+
+    fn abort(&mut self) -> Vec<Change> {
+        let mut changes = Vec::new();
+        if self.cursor_hidden {
+            changes.push(Change::CursorPosition {
+                x: Position::Absolute(0),
+                y: Position::Relative(1),
+            });
+            changes.push(Change::CursorShape(CursorShape::Default));
+            self.cursor_hidden = false;
+        }
+        changes
     }
 
     fn height(&self, terminal_width: usize) -> usize {
