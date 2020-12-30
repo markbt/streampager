@@ -186,7 +186,17 @@ pub(crate) fn start(
     };
     match outcome {
         direct::Outcome::RenderComplete | direct::Outcome::Interrupted => return Ok(()),
-        direct::Outcome::RenderIncomplete => (),
+        direct::Outcome::RenderIncomplete(rows) => {
+            // Push the rendered output up to the top of the screen, so
+            // that when we start rendering full screen we don't
+            // overwrite output from earlier commands.
+            let size = term.get_screen_size().map_err(Error::Termwiz)?;
+            let scroll_count = size.rows.saturating_sub(rows);
+            if scroll_count > 0 {
+                term.render(&[Change::Text("\n".repeat(scroll_count))])
+                    .map_err(Error::Termwiz)?;
+            }
+        }
         direct::Outcome::RenderNothing => term.enter_alternate_screen().map_err(Error::Termwiz)?,
     }
 

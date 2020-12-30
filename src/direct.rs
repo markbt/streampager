@@ -19,12 +19,11 @@ use crate::progress::Progress;
 /// Return value of `direct`.
 #[derive(Debug)]
 pub(crate) enum Outcome {
-    /// Content is not completely rendered.
-    /// A hint to enter full-screen.
-    RenderIncomplete,
+    /// Content is not completely rendered.  A hint to enter full-screen.
+    /// The number of rows that have been rendered is included.
+    RenderIncomplete(usize),
 
-    /// Content is not rendered at all.
-    /// A hint to enter full-screen.
+    /// Content is not rendered at all.  A hint to enter full-screen.
     RenderNothing,
 
     /// Content is completely rendered.
@@ -131,7 +130,7 @@ pub(crate) fn direct<T: Terminal>(
             }
         } else {
             if has_one_screen_limit && state.height(w) >= h {
-                return Ok(Some(Outcome::RenderIncomplete));
+                return Ok(Some(Outcome::RenderIncomplete(state.rendered_row_count())));
             }
             let changes = state.render_pending_lines(w)?;
             term.render(&changes).map_err(Error::Termwiz)?;
@@ -162,7 +161,7 @@ pub(crate) fn direct<T: Terminal>(
                         let outcome = if delayed {
                             Outcome::RenderNothing
                         } else {
-                            Outcome::RenderIncomplete
+                            Outcome::RenderIncomplete(state.rendered_row_count())
                         };
                         return Ok(outcome);
                     }
@@ -300,5 +299,9 @@ impl StreamingLines {
             row_count += line.height(terminal_width, WrappingMode::GraphemeBoundary);
         }
         row_count
+    }
+
+    fn rendered_row_count(&self) -> usize {
+        self.past_output_row_count + self.erase_row_count
     }
 }
