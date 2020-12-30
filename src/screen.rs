@@ -10,7 +10,7 @@
 //!
 //! An example of how these might map to the screen is shown below:
 //!
-//! ```ignore
+//! ```text
 //! File                Screen
 //! ====                ======
 //! LINE 0 PORTION 0 \  +------------------+__v top_line = 0, top_line_portion = 1
