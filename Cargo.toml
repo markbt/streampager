@@ -12,6 +12,7 @@ keywords = ["pager", "less", "more"]
 categories = ["command-line-utilities", "text-processing"]
 license = "MIT"
 build = "build.rs"
+default-run = "sp"
 
 [features]
 default = ["keymap-file"]
