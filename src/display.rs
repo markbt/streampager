@@ -280,6 +280,7 @@ pub(crate) fn start(
                         .map_err(Error::Termwiz)?;
                     None
                 }
+                Some(Event::Action(action)) => screen.dispatch_action(action, &event_sender)?,
                 Some(Event::Input(InputEvent::Key(key))) => {
                     let width = screen.width();
                     if let Some(prompt) = screen.prompt() {
@@ -332,7 +333,9 @@ pub(crate) fn start(
                     term.render(&[c]).map_err(Error::Termwiz)?;
                 }
                 DisplayAction::Render => event_sender.send_unique(Event::Render, &render_unique)?,
-                DisplayAction::Refresh => event_sender.send_unique(Event::Refresh, &refresh_unique)?,
+                DisplayAction::Refresh => {
+                    event_sender.send_unique(Event::Refresh, &refresh_unique)?
+                }
                 DisplayAction::RefreshPrompt => {
                     screens.current().refresh_prompt();
                     event_sender.send_unique(Event::Render, &render_unique)?;

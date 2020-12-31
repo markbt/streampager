@@ -1,5 +1,10 @@
 //! Actions.
 
+use std::sync::{Arc, Mutex};
+
+use crate::error::Error;
+use crate::event::{Event, EventSender};
+
 /// Actions that can be performed on the pager.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Action {
@@ -130,5 +135,23 @@ impl std::fmt::Display for Action {
             FirstMatch => write!(f, "Move to the first match"),
             LastMatch => write!(f, "Move to the last match"),
         }
+    }
+}
+
+/// A handle that can be used to send actions to the pager.
+#[derive(Clone)]
+pub struct ActionSender(Arc<Mutex<EventSender>>);
+
+impl ActionSender {
+    /// Create an action sender for an event sender.
+    pub(crate) fn new(event_sender: EventSender) -> ActionSender {
+        ActionSender(Arc::new(Mutex::new(event_sender)))
+    }
+
+    /// Send an action to the pager.
+    pub fn send(&self, action: Action) -> Result<(), Error> {
+        let sender = self.0.lock().unwrap();
+        sender.send(Event::Action(action))?;
+        Ok(())
     }
 }
