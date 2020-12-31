@@ -57,4 +57,4 @@ thiserror = "1.0.23"
 clap = "2.32.0"
 
 [dev-dependencies]
-pipe = "0.2.0"
+pipe = "0.4.0"
