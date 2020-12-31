@@ -21,7 +21,7 @@ mod buffer;
 mod buffer_cache;
 mod command;
 pub mod config;
-pub mod controlled_file;
+pub mod control;
 mod direct;
 mod display;
 pub mod error;
@@ -50,7 +50,7 @@ mod util;
 
 use bindings::Keymap;
 use config::{Config, InterfaceMode, KeymapConfig, WrappingMode};
-use controlled_file::Controller;
+use control::Controller;
 use event::EventStream;
 use file::{ControlledFile, File, FileInfo, LoadedFile};
 use progress::Progress;
