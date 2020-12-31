@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 
 use tempfile::NamedTempFile;
 
-use crate::display::Action;
+use crate::display::DisplayAction;
 use crate::error::Error;
 use crate::prompt::PromptState;
 
@@ -98,21 +98,21 @@ impl PromptHistory {
         self.entries[self.active_index].state_mut()
     }
 
-    pub(crate) fn previous(&mut self) -> Option<Action> {
+    pub(crate) fn previous(&mut self) -> Option<DisplayAction> {
         if self.active_index > 0 {
             self.active_index -= 1;
             self.entries[self.active_index].activate();
-            Some(Action::RefreshPrompt)
+            Some(DisplayAction::RefreshPrompt)
         } else {
             None
         }
     }
 
-    pub(crate) fn next(&mut self) -> Option<Action> {
+    pub(crate) fn next(&mut self) -> Option<DisplayAction> {
         if self.active_index < self.entries.len() - 1 {
             self.active_index += 1;
             self.entries[self.active_index].activate();
-            Some(Action::RefreshPrompt)
+            Some(DisplayAction::RefreshPrompt)
         } else {
             None
         }
