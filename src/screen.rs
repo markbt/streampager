@@ -1121,6 +1121,7 @@ impl Screen {
                 NextMatchLine => self.move_match(MatchMotion::NextLine),
                 FirstMatch => self.move_match(MatchMotion::First),
                 LastMatch => self.move_match(MatchMotion::Last),
+                Custom(ref b) => b.run(),
                 Unrecognized(_) => {}
             }
         }
