@@ -1,9 +1,19 @@
 //! Key bindings.
+
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
-use termwiz::input::{KeyCode, Modifiers};
 use thiserror::Error;
+
+/// Key codes for key bindings.
+///
+pub use termwiz::input::KeyCode;
+
+/// Keyboard modifiers for key bindings.
+///
+pub use termwiz::input::Modifiers;
 
 /// Errors specific to bindings.
 #[derive(Debug, Error)]
@@ -182,11 +192,23 @@ pub enum Binding {
     /// Move to the last match.
     LastMatch,
 
+    /// A custom binding.
+    Custom(CustomBinding),
+
     /// An unrecognised binding.
     Unrecognized(String),
 }
 
 impl Binding {
+    /// Create new custom binding config.
+    pub fn custom(
+        category: Category,
+        description: impl Into<String>,
+        callback: impl Fn() + Send + Sync + 'static,
+    ) -> Self {
+        Binding::Custom(CustomBinding::new(category, description, callback))
+    }
+
     pub(crate) fn category(&self) -> Category {
         use Binding::*;
         match self {
@@ -214,6 +236,7 @@ impl Binding {
             | PreviousMatchLine
             | FirstMatch
             | LastMatch => Category::Searching,
+            Custom(binding) => binding.category,
             Unrecognized(_) => Category::None,
         }
     }
@@ -308,26 +331,88 @@ impl std::fmt::Display for Binding {
             NextMatchLine => write!(f, "Move the the next matching line"),
             FirstMatch => write!(f, "Move to the first match"),
             LastMatch => write!(f, "Move to the last match"),
+            Custom(ref b) => write!(f, "{}", b.description),
             Unrecognized(ref s) => write!(f, "Unrecognized binding ({})", s),
         }
     }
 }
 
-/// A binding to a key.
+static CUSTOM_BINDING_ID: AtomicUsize = AtomicUsize::new(0);
+
+/// A custom binding.  This can be used by applications using streampager
+/// to add custom actions on keys.
+#[derive(Clone)]
+pub struct CustomBinding {
+    /// The id of this binding.  This is unique for each binding.
+    id: usize,
+
+    /// The category of this binding.
+    category: Category,
+
+    /// The description of this binding.
+    description: String,
+
+    /// Called when the action is triggered.
+    callback: Arc<dyn Fn() + Sync + Send>,
+}
+
+impl CustomBinding {
+    /// Create a new custom binding.
+    ///
+    /// The category and description are used in the help screen.  The
+    /// callback is executed whenever the binding is triggered.
+    pub fn new(
+        category: Category,
+        description: impl Into<String>,
+        callback: impl Fn() + Sync + Send + 'static,
+    ) -> CustomBinding {
+        CustomBinding {
+            id: CUSTOM_BINDING_ID.fetch_add(1, Ordering::SeqCst),
+            category,
+            description: description.into(),
+            callback: Arc::new(callback),
+        }
+    }
+
+    /// Trigger the binding and run its callback.
+    pub fn run(&self) {
+        (self.callback)()
+    }
+}
+
+impl PartialEq for CustomBinding {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for CustomBinding {}
+
+impl std::hash::Hash for CustomBinding {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl std::fmt::Debug for CustomBinding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("CustomBinding")
+            .field(&self.id)
+            .field(&self.description)
+            .finish()
+    }
+}
+
+/// A binding to a key and its associated help visibility.  Used by
+/// the keymaps macro to provide binding configuration.
 #[derive(Clone, Debug)]
+#[doc(hidden)]
 pub struct BindingConfig {
     /// The binding.
     pub binding: Binding,
 
     /// Whether this binding is visible in the help screen.
     pub visible: bool,
-}
-
-impl BindingConfig {
-    /// Create new binding config.
-    pub fn new(binding: Binding, visible: bool) -> Self {
-        Self { binding, visible }
-    }
 }
 
 /// A collection of key bindings.
@@ -377,19 +462,38 @@ impl Keymap {
         &mut self,
         modifiers: Modifiers,
         keycode: KeyCode,
-        binding_config: Option<BindingConfig>,
+        binding: Option<Binding>,
+    ) -> &mut Self {
+        self.bind_impl(modifiers, keycode, binding, true)
+    }
+
+    /// Bind (or unbind) a key combination, but exclude it from the help screen.
+    pub fn bind_hidden(
+        &mut self,
+        modifiers: Modifiers,
+        keycode: KeyCode,
+        binding: Option<Binding>,
+    ) -> &mut Self {
+        self.bind_impl(modifiers, keycode, binding, false)
+    }
+
+    fn bind_impl(
+        &mut self,
+        modifiers: Modifiers,
+        keycode: KeyCode,
+        binding: Option<Binding>,
+        visible: bool,
     ) -> &mut Self {
         if let Some(old_binding) = self.bindings.remove(&(modifiers, keycode)) {
             if let Some(keys) = self.keys.get_mut(&old_binding) {
                 keys.retain(|&item| item != (modifiers, keycode));
             }
         }
-        if let Some(binding_config) = binding_config {
-            self.bindings
-                .insert((modifiers, keycode), binding_config.binding.clone());
-            if binding_config.visible {
+        if let Some(binding) = binding {
+            self.bindings.insert((modifiers, keycode), binding.clone());
+            if visible {
                 self.keys
-                    .entry(binding_config.binding)
+                    .entry(binding)
                     .or_insert_with(Vec::new)
                     .push((modifiers, keycode));
             }
