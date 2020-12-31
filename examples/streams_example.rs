@@ -5,7 +5,8 @@ use std::io;
 use std::io::Write;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
-use streampager::bindings::{Binding, BindingConfig, Keymap};
+use streampager::bindings::Keymap;
+use streampager::action::Action;
 use streampager::{Pager, Result};
 use termwiz::input::{KeyCode, Modifiers};
 
@@ -62,7 +63,7 @@ fn main() -> Result<()> {
     keymap.bind(
         Modifiers::NONE,
         KeyCode::Char('x'),
-        Some(BindingConfig::new(Binding::Quit, true)),
+        Action::Quit,
     );
 
     let mut pager = Pager::new_using_system_terminal()?;

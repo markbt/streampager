@@ -15,6 +15,7 @@ use termwiz::caps::{Capabilities, ProbeHints};
 use termwiz::terminal::{SystemTerminal, Terminal};
 use vec_map::VecMap;
 
+pub mod action;
 mod bar;
 pub mod bindings;
 mod buffer;

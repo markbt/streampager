@@ -35,6 +35,7 @@ use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;
 use termwiz::surface::{CursorVisibility, Position};
 
+use crate::action::Action;
 use crate::bindings::{Binding, Keymap};
 use crate::command;
 use crate::config::{Config, WrappingMode};
@@ -1067,62 +1068,67 @@ impl Screen {
         event_sender: &EventSender,
     ) -> Result<Option<DisplayAction>, Error> {
         if let Some(binding) = self.keymap.get(key.modifiers, key.key) {
-            use Binding::*;
             match *binding {
-                Quit => return Ok(Some(DisplayAction::Quit)),
-                Refresh => return Ok(Some(DisplayAction::Refresh)),
-                Help => return Ok(Some(DisplayAction::ShowHelp)),
-                Cancel => {
-                    self.error_file = None;
-                    self.set_search(None);
-                    self.error = None;
-                    self.refresh();
-                    return Ok(Some(DisplayAction::ClearOverlay));
+                Binding::Action(ref action) => {
+                    use Action::*;
+                    match *action {
+                        Quit => return Ok(Some(DisplayAction::Quit)),
+                        Refresh => return Ok(Some(DisplayAction::Refresh)),
+                        Help => return Ok(Some(DisplayAction::ShowHelp)),
+                        Cancel => {
+                            self.error_file = None;
+                            self.set_search(None);
+                            self.error = None;
+                            self.refresh();
+                            return Ok(Some(DisplayAction::ClearOverlay));
+                        }
+                        PreviousFile => return Ok(Some(DisplayAction::PreviousFile)),
+                        NextFile => return Ok(Some(DisplayAction::NextFile)),
+                        ScrollUpLines(n) => self.scroll_up(n),
+                        ScrollDownLines(n) => self.scroll_down(n),
+                        ScrollUpScreenFraction(n) => self.scroll_up_screen_fraction(n),
+                        ScrollDownScreenFraction(n) => self.scroll_down_screen_fraction(n),
+                        ScrollToTop => self.scroll_to(0),
+                        ScrollToBottom => self.following_end = true,
+                        ScrollLeftColumns(n) => self.scroll_left(n),
+                        ScrollRightColumns(n) => self.scroll_right(n),
+                        ScrollLeftScreenFraction(n) => self.scroll_left_screen_fraction(n),
+                        ScrollRightScreenFraction(n) => self.scroll_right_screen_fraction(n),
+                        ToggleLineNumbers => {
+                            self.line_numbers = !self.line_numbers;
+                            return Ok(Some(DisplayAction::Refresh));
+                        }
+                        ToggleLineWrapping => {
+                            self.wrapping_mode = self.wrapping_mode.next_mode();
+                            return Ok(Some(DisplayAction::Refresh));
+                        }
+                        PromptGoToLine => self.prompt = Some(command::goto()),
+                        PromptSearchFromStart => {
+                            self.prompt =
+                                Some(command::search(SearchKind::First, event_sender.clone()))
+                        }
+                        PromptSearchForwards => {
+                            self.prompt = Some(command::search(
+                                SearchKind::FirstAfter(self.rendered.top_line),
+                                event_sender.clone(),
+                            ))
+                        }
+                        PromptSearchBackwards => {
+                            self.prompt = Some(command::search(
+                                SearchKind::FirstBefore(self.rendered.bottom_line),
+                                event_sender.clone(),
+                            ))
+                        }
+                        PreviousMatch => self.move_match(MatchMotion::Previous),
+                        NextMatch => self.move_match(MatchMotion::Next),
+                        PreviousMatchLine => self.move_match(MatchMotion::PreviousLine),
+                        NextMatchLine => self.move_match(MatchMotion::NextLine),
+                        FirstMatch => self.move_match(MatchMotion::First),
+                        LastMatch => self.move_match(MatchMotion::Last),
+                    }
                 }
-                PreviousFile => return Ok(Some(DisplayAction::PreviousFile)),
-                NextFile => return Ok(Some(DisplayAction::NextFile)),
-                ScrollUpLines(n) => self.scroll_up(n),
-                ScrollDownLines(n) => self.scroll_down(n),
-                ScrollUpScreenFraction(n) => self.scroll_up_screen_fraction(n),
-                ScrollDownScreenFraction(n) => self.scroll_down_screen_fraction(n),
-                ScrollToTop => self.scroll_to(0),
-                ScrollToBottom => self.following_end = true,
-                ScrollLeftColumns(n) => self.scroll_left(n),
-                ScrollRightColumns(n) => self.scroll_right(n),
-                ScrollLeftScreenFraction(n) => self.scroll_left_screen_fraction(n),
-                ScrollRightScreenFraction(n) => self.scroll_right_screen_fraction(n),
-                ToggleLineNumbers => {
-                    self.line_numbers = !self.line_numbers;
-                    return Ok(Some(DisplayAction::Refresh));
-                }
-                ToggleLineWrapping => {
-                    self.wrapping_mode = self.wrapping_mode.next_mode();
-                    return Ok(Some(DisplayAction::Refresh));
-                }
-                PromptGoToLine => self.prompt = Some(command::goto()),
-                PromptSearchFromStart => {
-                    self.prompt = Some(command::search(SearchKind::First, event_sender.clone()))
-                }
-                PromptSearchForwards => {
-                    self.prompt = Some(command::search(
-                        SearchKind::FirstAfter(self.rendered.top_line),
-                        event_sender.clone(),
-                    ))
-                }
-                PromptSearchBackwards => {
-                    self.prompt = Some(command::search(
-                        SearchKind::FirstBefore(self.rendered.bottom_line),
-                        event_sender.clone(),
-                    ))
-                }
-                PreviousMatch => self.move_match(MatchMotion::Previous),
-                NextMatch => self.move_match(MatchMotion::Next),
-                PreviousMatchLine => self.move_match(MatchMotion::PreviousLine),
-                NextMatchLine => self.move_match(MatchMotion::NextLine),
-                FirstMatch => self.move_match(MatchMotion::First),
-                LastMatch => self.move_match(MatchMotion::Last),
-                Custom(ref b) => b.run(),
-                Unrecognized(_) => {}
+                Binding::Custom(ref b) => b.run(),
+                Binding::Unrecognized(_) => {}
             }
         }
         Ok(Some(DisplayAction::Render))
