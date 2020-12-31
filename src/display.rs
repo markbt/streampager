@@ -51,9 +51,9 @@ impl Capabilities {
 }
 
 /// An action that affects the display.
-pub(crate) enum Action {
+pub(crate) enum DisplayAction {
     /// Run a function.  The function may return a new action to run next.
-    Run(Box<dyn FnMut(&mut Screen) -> Result<Option<Action>, Error>>),
+    Run(Box<dyn FnMut(&mut Screen) -> Result<Option<DisplayAction>, Error>>),
 
     /// Change the terminal.
     Change(Change),
@@ -299,17 +299,17 @@ pub(crate) fn start(
                         .paste(text, width)?
                 }
                 Some(Event::Loaded(index)) if screens.is_current_index(index) => {
-                    Some(Action::Refresh)
+                    Some(DisplayAction::Refresh)
                 }
                 Some(Event::Appending(index)) if screens.is_current_index(index) => {
-                    Some(Action::Refresh)
+                    Some(DisplayAction::Refresh)
                 }
                 Some(Event::Reloading(index)) => {
                     if let Some(screen) = screens.get(index) {
                         screen.flush_line_caches();
                     }
                     if screens.is_current_index(index) {
-                        Some(Action::Refresh)
+                        Some(DisplayAction::Refresh)
                     } else {
                         None
                     }
@@ -327,17 +327,17 @@ pub(crate) fn start(
         // Process the action.  We may get new actions in return from the action.
         while let Some(current_action) = action.take() {
             match current_action {
-                Action::Run(mut f) => action = f(screens.current())?,
-                Action::Change(c) => {
+                DisplayAction::Run(mut f) => action = f(screens.current())?,
+                DisplayAction::Change(c) => {
                     term.render(&[c]).map_err(Error::Termwiz)?;
                 }
-                Action::Render => event_sender.send_unique(Event::Render, &render_unique)?,
-                Action::Refresh => event_sender.send_unique(Event::Refresh, &refresh_unique)?,
-                Action::RefreshPrompt => {
+                DisplayAction::Render => event_sender.send_unique(Event::Render, &render_unique)?,
+                DisplayAction::Refresh => event_sender.send_unique(Event::Refresh, &refresh_unique)?,
+                DisplayAction::RefreshPrompt => {
                     screens.current().refresh_prompt();
                     event_sender.send_unique(Event::Render, &render_unique)?;
                 }
-                Action::NextFile => {
+                DisplayAction::NextFile => {
                     screens.overlay = None;
                     if screens.current_index < screens.screens.len() - 1 {
                         screens.current_index += 1;
@@ -349,7 +349,7 @@ pub(crate) fn start(
                             .map_err(Error::Termwiz)?;
                     }
                 }
-                Action::PreviousFile => {
+                DisplayAction::PreviousFile => {
                     screens.overlay = None;
                     if screens.current_index > 0 {
                         screens.current_index -= 1;
@@ -361,7 +361,7 @@ pub(crate) fn start(
                             .map_err(Error::Termwiz)?;
                     }
                 }
-                Action::ShowHelp => {
+                DisplayAction::ShowHelp => {
                     let overlay_index = screens.overlay_index + 1;
                     let screen = screens.current();
                     let mut screen = Screen::new(
@@ -382,7 +382,7 @@ pub(crate) fn start(
                     screens.overlay = Some(screen);
                     screens.overlay_index = overlay_index;
                 }
-                Action::ClearOverlay => {
+                DisplayAction::ClearOverlay => {
                     screens.overlay = None;
                     let screen = screens.current();
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
@@ -391,7 +391,7 @@ pub(crate) fn start(
                     term.render(&screen.render(&caps)?)
                         .map_err(Error::Termwiz)?;
                 }
-                Action::Quit => {
+                DisplayAction::Quit => {
                     let screen = screens.current();
                     overlay_height.store(screen.overlay_height(), Ordering::SeqCst);
                     return Ok(());

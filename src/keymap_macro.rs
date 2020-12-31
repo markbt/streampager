@@ -32,7 +32,7 @@ macro_rules! keymap_impl {
     // => Binding (termination)
     (
         {
-            => $binding:ident $( ( $( $bind_params:tt )* ) )? ;
+            => $action:ident $( ( $( $action_params:tt )* ) )? ;
             $( $rest:tt )*
         }
         ( $visible:literal )
@@ -52,7 +52,7 @@ macro_rules! keymap_impl {
     // => Binding (assign key)
     (
         {
-            => $binding:ident $( ( $( $bind_params:tt )* ) )? ;
+            => $action:ident $( ( $( $action_params:tt )* ) )? ;
             $( $rest:tt )*
         }
         ( $visible:literal )
@@ -62,7 +62,7 @@ macro_rules! keymap_impl {
     ) => {
         keymap_impl! {
             {
-                => $binding $( ( $( $bind_params )* ) )? ;
+                => $action $( ( $( $action_params )* ) )? ;
                 $( $rest )*
             }
             ( $visible )
@@ -73,7 +73,9 @@ macro_rules! keymap_impl {
                 (
                     $key,
                     $crate::bindings::BindingConfig {
-                        binding: $crate::bindings::Binding::$binding $( ( $( $bind_params )* ) )?,
+                        binding: $crate::bindings::Binding::Action(
+                            $crate::action::Action::$action $( ( $( $action_params )* ) )?
+                        ),
                         visible: $key_visible,
                     },
                 ),

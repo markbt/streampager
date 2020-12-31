@@ -7,6 +7,8 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 use thiserror::Error;
 
+use crate::action::Action;
+
 /// Key codes for key bindings.
 ///
 pub use termwiz::input::KeyCode;
@@ -107,90 +109,8 @@ impl std::fmt::Display for Category {
 /// An action that may be bound to a key.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Binding {
-    /// Quit the pager.
-    Quit,
-
-    /// Refresh the screen.
-    Refresh,
-
-    /// Show the help screen.
-    Help,
-
-    /// Cancel the current action.
-    Cancel,
-
-    /// Switch to the previous file.
-    PreviousFile,
-
-    /// Switch to the next file.
-    NextFile,
-
-    /// Scroll up *n* lines.
-    ScrollUpLines(usize),
-
-    /// Scroll down *n* lines.
-    ScrollDownLines(usize),
-
-    /// Scroll up 1/*n* of the screen height.
-    ScrollUpScreenFraction(usize),
-
-    /// Scroll down 1/*n* of the screen height.
-    ScrollDownScreenFraction(usize),
-
-    /// Scroll to the top of the file.
-    ScrollToTop,
-
-    /// Scroll to the bottom of the file, and start following it.
-    ScrollToBottom,
-
-    /// Scroll left *n* columns.
-    ScrollLeftColumns(usize),
-
-    /// Scroll right *n* columns.
-    ScrollRightColumns(usize),
-
-    /// Scroll left 1/*n* of the screen width.
-    ScrollLeftScreenFraction(usize),
-
-    /// Scroll right 1/*n* of the screen width.
-    ScrollRightScreenFraction(usize),
-
-    /// Toggle display of line numbers.
-    ToggleLineNumbers,
-
-    /// Toggle line wrapping mode.
-    ToggleLineWrapping,
-
-    /// Prompt the user for a line to move to.
-    PromptGoToLine,
-
-    /// Prompt the user for a search term.  The search will start at the beginning of the file.
-    PromptSearchFromStart,
-
-    /// Prompt the user for a search term.  The search will start at the top of the screen.
-    PromptSearchForwards,
-
-    /// Prompt the user for a search term.  The search will start from the bottom of the screen and
-    /// proceed backwards.
-    PromptSearchBackwards,
-
-    /// Move to the previous match.
-    PreviousMatch,
-
-    /// Move to the next match.
-    NextMatch,
-
-    /// Move the previous line that contains a match.
-    PreviousMatchLine,
-
-    /// Move to the next line that contains a match.
-    NextMatchLine,
-
-    /// Move to the first match.
-    FirstMatch,
-
-    /// Move to the last match.
-    LastMatch,
+    /// An action.
+    Action(Action),
 
     /// A custom binding.
     Custom(CustomBinding),
@@ -210,40 +130,44 @@ impl Binding {
     }
 
     pub(crate) fn category(&self) -> Category {
-        use Binding::*;
         match self {
-            Quit | Refresh | Help | Cancel => Category::General,
-            PreviousFile
-            | NextFile
-            | ScrollUpLines(_)
-            | ScrollDownLines(_)
-            | ScrollUpScreenFraction(_)
-            | ScrollDownScreenFraction(_)
-            | ScrollToTop
-            | ScrollToBottom
-            | ScrollLeftColumns(_)
-            | ScrollRightColumns(_)
-            | ScrollLeftScreenFraction(_)
-            | ScrollRightScreenFraction(_)
-            | PromptGoToLine => Category::Navigation,
-            ToggleLineNumbers | ToggleLineWrapping => Category::Presentation,
-            PromptSearchFromStart
-            | PromptSearchForwards
-            | PromptSearchBackwards
-            | NextMatch
-            | PreviousMatch
-            | NextMatchLine
-            | PreviousMatchLine
-            | FirstMatch
-            | LastMatch => Category::Searching,
-            Custom(binding) => binding.category,
-            Unrecognized(_) => Category::None,
+            Binding::Action(action) => {
+                use Action::*;
+                match action {
+                    Quit | Refresh | Help | Cancel => Category::General,
+                    PreviousFile
+                    | NextFile
+                    | ScrollUpLines(_)
+                    | ScrollDownLines(_)
+                    | ScrollUpScreenFraction(_)
+                    | ScrollDownScreenFraction(_)
+                    | ScrollToTop
+                    | ScrollToBottom
+                    | ScrollLeftColumns(_)
+                    | ScrollRightColumns(_)
+                    | ScrollLeftScreenFraction(_)
+                    | ScrollRightScreenFraction(_)
+                    | PromptGoToLine => Category::Navigation,
+                    ToggleLineNumbers | ToggleLineWrapping => Category::Presentation,
+                    PromptSearchFromStart
+                    | PromptSearchForwards
+                    | PromptSearchBackwards
+                    | NextMatch
+                    | PreviousMatch
+                    | NextMatchLine
+                    | PreviousMatchLine
+                    | FirstMatch
+                    | LastMatch => Category::Searching,
+                }
+            }
+            Binding::Custom(binding) => binding.category,
+            Binding::Unrecognized(_) => Category::None,
         }
     }
 
     /// Parse a keybinding identifier and list of parameters into a key binding.
     pub fn parse(ident: String, params: Vec<String>) -> Result<Self> {
-        use Binding::*;
+        use Action::*;
 
         let param_usize = |index| -> Result<usize> {
             let value: &String = params
@@ -255,7 +179,7 @@ impl Binding {
             Ok(value)
         };
 
-        let binding = match ident.as_str() {
+        let action = match ident.as_str() {
             "Quit" => Quit,
             "Refresh" => Refresh,
             "Help" => Help,
@@ -284,55 +208,31 @@ impl Binding {
             "NextMatchLine" => NextMatchLine,
             "FirstMatch" => FirstMatch,
             "LastMatch" => LastMatch,
-            _ => Unrecognized(ident),
+            _ => return Ok(Binding::Unrecognized(ident)),
         };
 
-        Ok(binding)
+        Ok(Binding::Action(action))
+    }
+}
+
+impl From<Action> for Binding {
+    fn from(action: Action) -> Binding {
+        Binding::Action(action)
+    }
+}
+
+impl From<Action> for Option<Binding> {
+    fn from(action: Action) -> Option<Binding> {
+        Some(Binding::Action(action))
     }
 }
 
 impl std::fmt::Display for Binding {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Binding::*;
         match *self {
-            Quit => write!(f, "Quit"),
-            Refresh => write!(f, "Refresh the screen"),
-            Help => write!(f, "Show this help"),
-            Cancel => write!(f, "Close help or any open prompt"),
-            PreviousFile => write!(f, "Switch to the previous file"),
-            NextFile => write!(f, "Switch to the next file"),
-            ScrollUpLines(1) => write!(f, "Scroll up"),
-            ScrollUpLines(n) => write!(f, "Scroll up {} lines", n),
-            ScrollDownLines(1) => write!(f, "Scroll down"),
-            ScrollDownLines(n) => write!(f, "Scroll down {} lines", n),
-            ScrollUpScreenFraction(1) => write!(f, "Scroll up one screen"),
-            ScrollUpScreenFraction(n) => write!(f, "Scroll up 1/{} screen", n),
-            ScrollDownScreenFraction(1) => write!(f, "Scroll down one screen"),
-            ScrollDownScreenFraction(n) => write!(f, "Scroll down 1/{} screen", n),
-            ScrollToTop => write!(f, "Move to the start of the file"),
-            ScrollToBottom => write!(f, "Move to and follow the end of the file"),
-            ScrollLeftColumns(1) => write!(f, "Scroll left"),
-            ScrollLeftColumns(n) => write!(f, "Scroll left {} columns", n),
-            ScrollRightColumns(1) => write!(f, "Scroll right"),
-            ScrollRightColumns(n) => write!(f, "Scroll right {} columns", n),
-            ScrollLeftScreenFraction(1) => write!(f, "Scroll left one screen"),
-            ScrollLeftScreenFraction(n) => write!(f, "Scroll left 1/{} screen", n),
-            ScrollRightScreenFraction(1) => write!(f, "Scroll right one screen"),
-            ScrollRightScreenFraction(n) => write!(f, "Scroll right 1/{} screen", n),
-            ToggleLineNumbers => write!(f, "Toggle line numbers"),
-            ToggleLineWrapping => write!(f, "Cycle through line wrapping modes"),
-            PromptGoToLine => write!(f, "Go to position in file"),
-            PromptSearchFromStart => write!(f, "Search from the start of the file"),
-            PromptSearchForwards => write!(f, "Search forwards"),
-            PromptSearchBackwards => write!(f, "Search backwards"),
-            PreviousMatch => write!(f, "Move to the previous match"),
-            NextMatch => write!(f, "Move to the next match"),
-            PreviousMatchLine => write!(f, "Move to the previous matching line"),
-            NextMatchLine => write!(f, "Move the the next matching line"),
-            FirstMatch => write!(f, "Move to the first match"),
-            LastMatch => write!(f, "Move to the last match"),
-            Custom(ref b) => write!(f, "{}", b.description),
-            Unrecognized(ref s) => write!(f, "Unrecognized binding ({})", s),
+            Binding::Action(ref a) => write!(f, "{}", a),
+            Binding::Custom(ref b) => write!(f, "{}", b.description),
+            Binding::Unrecognized(ref s) => write!(f, "Unrecognized binding ({})", s),
         }
     }
 }
@@ -462,9 +362,9 @@ impl Keymap {
         &mut self,
         modifiers: Modifiers,
         keycode: KeyCode,
-        binding: Option<Binding>,
+        binding: impl Into<Option<Binding>>,
     ) -> &mut Self {
-        self.bind_impl(modifiers, keycode, binding, true)
+        self.bind_impl(modifiers, keycode, binding.into(), true)
     }
 
     /// Bind (or unbind) a key combination, but exclude it from the help screen.
@@ -472,9 +372,9 @@ impl Keymap {
         &mut self,
         modifiers: Modifiers,
         keycode: KeyCode,
-        binding: Option<Binding>,
+        binding: impl Into<Option<Binding>>,
     ) -> &mut Self {
-        self.bind_impl(modifiers, keycode, binding, false)
+        self.bind_impl(modifiers, keycode, binding.into(), false)
     }
 
     fn bind_impl(
