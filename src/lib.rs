@@ -21,6 +21,7 @@ mod buffer;
 mod buffer_cache;
 mod command;
 pub mod config;
+pub mod controlled_file;
 mod direct;
 mod display;
 pub mod error;
@@ -49,8 +50,9 @@ mod util;
 
 use bindings::Keymap;
 use config::{Config, InterfaceMode, KeymapConfig, WrappingMode};
+use controlled_file::Controller;
 use event::EventStream;
-use file::{File, FileInfo, LoadedFile};
+use file::{ControlledFile, File, FileInfo, LoadedFile};
 use progress::Progress;
 
 /// The main pager state.
@@ -187,6 +189,15 @@ impl Pager {
         let index = self.files.len();
         let event_sender = self.events.sender();
         let file = LoadedFile::new_file(index, filename, event_sender)?;
+        self.files.push(file.into());
+        Ok(self)
+    }
+
+    /// Attach a controlled file.
+    pub fn add_controlled_file(&mut self, controller: &Controller) -> Result<&mut Self> {
+        let index = self.files.len();
+        let event_sender = self.events.sender();
+        let file = ControlledFile::new(controller, index, event_sender);
         self.files.push(file.into());
         Ok(self)
     }
