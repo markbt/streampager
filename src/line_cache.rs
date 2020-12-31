@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use lru::LruCache;
 use regex::bytes::Regex;
 
-use crate::file::File;
+use crate::file::{File, FileInfo};
 use crate::line::Line;
 
 /// An LRU-cache for Lines.

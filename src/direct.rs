@@ -12,7 +12,7 @@ use vec_map::VecMap;
 use crate::config::{InterfaceMode, WrappingMode};
 use crate::error::{Error, Result};
 use crate::event::{Event, EventStream};
-use crate::file::File;
+use crate::file::{File, FileInfo};
 use crate::line::Line;
 use crate::progress::Progress;
 

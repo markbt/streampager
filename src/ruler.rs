@@ -11,7 +11,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::bar::{Bar, BarItem, BarString, BarStyle};
 use crate::config::WrappingMode;
-use crate::file::File;
+use crate::file::{File, FileInfo};
 use crate::util;
 
 pub(crate) struct Ruler {
@@ -23,7 +23,7 @@ pub(crate) struct Ruler {
 impl Ruler {
     pub(crate) fn new(file: File) -> Self {
         let title = Arc::new(BarString::new(file.title().to_string()));
-        let file_info = Arc::new(FileInfo::new(file.clone()));
+        let file_info = Arc::new(FileInformationIndicator::new(file.clone()));
         let position = Arc::new(PositionIndicator::new(file.clone()));
         let loading = Arc::new(LoadingIndicator::new(file));
 
@@ -72,20 +72,20 @@ impl Ruler {
     }
 }
 
-/// Shows the file's additional info.
-struct FileInfo {
+/// Shows the file's additional information.
+struct FileInformationIndicator {
     file: File,
 }
 
-impl FileInfo {
+impl FileInformationIndicator {
     fn new(file: File) -> Self {
-        FileInfo { file }
+        FileInformationIndicator { file }
     }
 }
 
-impl BarItem for FileInfo {
+impl BarItem for FileInformationIndicator {
     fn width(&self) -> usize {
-        self.file.info().as_str().width()
+        self.file.info().width()
     }
 
     fn render(&self, changes: &mut Vec<Change>, width: usize) {

@@ -42,7 +42,7 @@ use crate::display::Action;
 use crate::display::Capabilities;
 use crate::error::Error;
 use crate::event::EventSender;
-use crate::file::File;
+use crate::file::{File, FileInfo};
 use crate::line::Line;
 use crate::line_cache::LineCache;
 use crate::progress::Progress;

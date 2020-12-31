@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::direct;
 use crate::error::Error;
 use crate::event::{Event, EventStream, UniqueInstance};
-use crate::file::File;
+use crate::file::{File, FileIndex, FileInfo, LoadedFile};
 use crate::help::help_text;
 use crate::progress::Progress;
 use crate::screen::Screen;
@@ -92,7 +92,7 @@ struct Screens {
     overlay: Option<Screen>,
 
     /// The currently active screen.
-    current_index: usize,
+    current_index: FileIndex,
 
     /// The file index of the overlay.  While overlays aren't part of the
     /// screens vector, we still need a file index so that the file loader can
@@ -100,7 +100,7 @@ struct Screens {
     /// matches.  Use an index starting after the loaded files for this purpose.
     /// Each time a new overlay is added, this index is incremented, so that
     /// each overlay gets a unique index.
-    overlay_index: usize,
+    overlay_index: FileIndex,
 }
 
 impl Screens {
@@ -138,7 +138,7 @@ impl Screens {
     }
 
     /// True if the given index is the index of the currently visible screen.
-    fn is_current_index(&self, index: usize) -> bool {
+    fn is_current_index(&self, index: FileIndex) -> bool {
         match self.overlay {
             Some(_) => index == self.overlay_index,
             None => index == self.current_index,
@@ -365,12 +365,13 @@ pub(crate) fn start(
                     let overlay_index = screens.overlay_index + 1;
                     let screen = screens.current();
                     let mut screen = Screen::new(
-                        File::new_static(
+                        LoadedFile::new_static(
                             overlay_index,
                             "HELP",
                             help_text(screen.keymap())?.into_bytes(),
                             event_sender.clone(),
-                        )?,
+                        )?
+                        .into(),
                         config.clone(),
                     )?;
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;

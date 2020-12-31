@@ -36,6 +36,7 @@ mod keymaps;
 mod line;
 mod line_cache;
 mod line_drawing;
+mod loaded_file;
 mod overstrike;
 mod progress;
 mod prompt;
@@ -49,7 +50,7 @@ mod util;
 use bindings::Keymap;
 use config::{Config, InterfaceMode, KeymapConfig, WrappingMode};
 use event::EventStream;
-use file::File;
+use file::{File, FileInfo, LoadedFile};
 use progress::Progress;
 
 /// The main pager state.
@@ -159,8 +160,8 @@ impl Pager {
     ) -> Result<&mut Self> {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let file = File::new_streamed(index, stream, title, event_sender)?;
-        self.files.push(file);
+        let file = LoadedFile::new_streamed(index, stream, title, event_sender)?;
+        self.files.push(file.into());
         Ok(self)
     }
 
@@ -172,11 +173,12 @@ impl Pager {
     ) -> Result<&mut Self> {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let file = File::new_streamed(index, stream, title, event_sender)?;
+        let file = LoadedFile::new_streamed(index, stream, title, event_sender)?;
         if let Some(out_file) = self.files.last() {
-            self.error_files.insert(out_file.index(), file.clone());
+            self.error_files
+                .insert(out_file.index(), file.clone().into());
         }
-        self.files.push(file);
+        self.files.push(file.into());
         Ok(self)
     }
 
@@ -184,8 +186,8 @@ impl Pager {
     pub fn add_output_file(&mut self, filename: &OsStr) -> Result<&mut Self> {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let file = File::new_file(index, filename, event_sender)?;
-        self.files.push(file);
+        let file = LoadedFile::new_file(index, filename, event_sender)?;
+        self.files.push(file.into());
         Ok(self)
     }
 
@@ -202,10 +204,11 @@ impl Pager {
     {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let (out_file, err_file) = File::new_command(index, command, args, title, event_sender)?;
-        self.error_files.insert(index, err_file.clone());
-        self.files.push(out_file);
-        self.files.push(err_file);
+        let (out_file, err_file) =
+            LoadedFile::new_command(index, command, args, title, event_sender)?;
+        self.error_files.insert(index, err_file.clone().into());
+        self.files.push(out_file.into());
+        self.files.push(err_file.into());
         Ok(self)
     }
 

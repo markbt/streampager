@@ -18,7 +18,7 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::error::Error;
 use crate::event::{Event, EventSender};
-use crate::file::File;
+use crate::file::{File, FileInfo};
 use crate::overstrike;
 
 const SEARCH_BATCH_SIZE: usize = 10000;

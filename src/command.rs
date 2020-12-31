@@ -5,6 +5,7 @@
 use crate::display::Action;
 use crate::error::Error;
 use crate::event::EventSender;
+use crate::file::FileInfo;
 use crate::prompt::Prompt;
 use crate::screen::Screen;
 use crate::search::{MatchMotion, Search, SearchKind};

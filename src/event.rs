@@ -9,6 +9,7 @@ use termwiz::input::InputEvent;
 use termwiz::terminal::{Terminal, TerminalWaker};
 
 use crate::error::Error;
+use crate::file::FileIndex;
 
 /// An event.
 ///
@@ -19,11 +20,11 @@ pub(crate) enum Event {
     /// An input event.
     Input(InputEvent),
     /// A file has finished loading.
-    Loaded(usize),
+    Loaded(FileIndex),
     /// A file has started loading more data.
-    Appending(usize),
+    Appending(FileIndex),
     /// A file has started reloading.
-    Reloading(usize),
+    Reloading(FileIndex),
     /// Render an update to the screen.
     Render,
     /// Refresh the whole screen.
@@ -33,9 +34,9 @@ pub(crate) enum Event {
     /// A new progress display is available.
     Progress,
     /// Search has found the first match.
-    SearchFirstMatch(usize),
+    SearchFirstMatch(FileIndex),
     /// Search has finished.
-    SearchFinished(usize),
+    SearchFinished(FileIndex),
 }
 
 #[derive(Debug, Clone)]
