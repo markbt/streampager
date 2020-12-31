@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use enum_dispatch::enum_dispatch;
 
-pub(crate) use crate::controlled_file::ControlledFile;
+pub(crate) use crate::control::ControlledFile;
 pub(crate) use crate::loaded_file::LoadedFile;
 
 /// A global index for files that streampager is paging.

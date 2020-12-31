@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 
 use streampager::bindings::{Binding, Category, KeyCode, Keymap, Modifiers};
-use streampager::controlled_file::{Change, Controller};
+use streampager::control::{Change, Controller};
 use streampager::Pager;
 
 fn start_thread(controller: Controller) {
