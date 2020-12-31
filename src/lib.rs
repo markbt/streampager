@@ -49,6 +49,7 @@ mod screen;
 mod search;
 mod util;
 
+use action::ActionSender;
 use bindings::Keymap;
 use config::{Config, InterfaceMode, KeymapConfig, WrappingMode};
 use control::Controller;
@@ -265,6 +266,11 @@ impl Pager {
     pub fn set_keymap(&mut self, keymap: Keymap) -> &mut Self {
         self.config.keymap = KeymapConfig::Keymap(Arc::new(keymap));
         self
+    }
+
+    /// Create an action sender which can be used to send `Action`s to this pager.
+    pub fn action_sender(&self) -> ActionSender {
+        self.events.action_sender()
     }
 
     /// Run Stream Pager.

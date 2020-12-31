@@ -8,6 +8,7 @@ use std::time::Duration;
 use termwiz::input::InputEvent;
 use termwiz::terminal::{Terminal, TerminalWaker};
 
+use crate::action::{Action, ActionSender};
 use crate::error::Error;
 use crate::file::FileIndex;
 
@@ -17,6 +18,8 @@ use crate::file::FileIndex;
 /// input, state changes, and display refresh requests.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Event {
+    /// An action.
+    Action(Action),
     /// An input event.
     Input(InputEvent),
     /// A file has finished loading.
@@ -90,6 +93,11 @@ impl EventStream {
     /// Create a sender for the event stream.
     pub(crate) fn sender(&self) -> EventSender {
         EventSender(self.send.clone(), self.waker.clone())
+    }
+
+    /// Create an action sender for the event stream.
+    pub(crate) fn action_sender(&self) -> ActionSender {
+        ActionSender::new(self.sender())
     }
 
     fn try_recv(&self) -> Result<Option<Event>, Error> {
