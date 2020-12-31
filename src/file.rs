@@ -94,7 +94,7 @@ struct FileMeta {
 
 /// Event triggered by changes to a file on disk.
 #[derive(Clone, Copy, Debug)]
-pub enum FileEvent {
+pub(crate) enum FileEvent {
     /// File has been appended to.
     Append,
 

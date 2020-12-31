@@ -15,7 +15,7 @@ use crate::error::Error;
 /// Events drive most of the main processing of `sp`.  This includes user
 /// input, state changes, and display refresh requests.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Event {
+pub(crate) enum Event {
     /// An input event.
     Input(InputEvent),
     /// A file has finished loading.
@@ -39,7 +39,7 @@ pub enum Event {
 }
 
 #[derive(Debug, Clone)]
-pub struct UniqueInstance(Arc<AtomicBool>);
+pub(crate) struct UniqueInstance(Arc<AtomicBool>);
 
 impl UniqueInstance {
     pub(crate) fn new() -> UniqueInstance {
@@ -47,7 +47,7 @@ impl UniqueInstance {
     }
 }
 
-pub enum Envelope {
+pub(crate) enum Envelope {
     Normal(Event),
     Unique(Event, UniqueInstance),
 }

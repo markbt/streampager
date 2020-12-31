@@ -44,17 +44,13 @@ pub enum Error {
     #[error("channel error")]
     ChannelRecv(#[from] RecvError),
 
-    /// (Try)Receive error on a channel.
+    /// Try-receive error on a channel.
     #[error("channel error")]
     ChannelTryRecv(#[from] TryRecvError),
 
-    /// Send error on a FileEvent channel.
+    /// Send error on a channel.
     #[error("channel error")]
-    ChannelSendFileEvent(#[from] SendError<crate::file::FileEvent>),
-
-    /// Send error on an Envelope channel.
-    #[error("channel error")]
-    ChannelSendEnvelope(#[from] SendError<crate::event::Envelope>),
+    ChannelSend,
 
     /// Error returned if the terminfo database is missing.
     #[error("terminfo database not found (is $TERM correct?)")]
@@ -96,5 +92,11 @@ impl Error {
             error: Box::new(self),
             command: command.as_ref().to_string_lossy().to_string(),
         }
+    }
+}
+
+impl<T> From<SendError<T>> for Error {
+    fn from(_send_error: SendError<T>) -> Error {
+        Error::ChannelSend
     }
 }
