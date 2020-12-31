@@ -5,10 +5,10 @@ use pest_derive::Parser;
 use termwiz::input::{KeyCode, Modifiers};
 
 use crate::bindings::{Binding, BindingConfig, BindingError};
-use crate::keymaps::error::{KeymapError, Result};
+use crate::keymap_error::{KeymapError, Result};
 
 #[derive(Parser)]
-#[grammar = "keymaps/keymap.pest"]
+#[grammar = "keymap.pest"]
 struct KeymapFileParser;
 
 // File data to generate a keymap

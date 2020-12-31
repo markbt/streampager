@@ -30,7 +30,7 @@ pub enum Error {
 
     /// Keymap-related error.
     #[error("keymap error")]
-    Keymap(#[from] crate::keymaps::error::KeymapError),
+    Keymap(#[from] crate::keymap_error::KeymapError),
 
     /// Binding-related error.
     #[error("keybinding error")]

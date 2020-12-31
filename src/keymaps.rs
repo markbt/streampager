@@ -3,10 +3,7 @@
 use termwiz::input::{KeyCode, Modifiers};
 
 use crate::bindings::{BindingConfig, Keymap};
-
-pub mod error;
-
-use error::{KeymapError, Result};
+use crate::keymap_error::{KeymapError, Result};
 
 // Static data to generate a keymap.
 type KeymapData = &'static [((Modifiers, KeyCode), BindingConfig)];

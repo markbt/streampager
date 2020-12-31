@@ -27,6 +27,7 @@ pub mod error;
 mod event;
 mod file;
 mod help;
+mod keymap_error;
 #[cfg(feature = "keymap-file")]
 mod keymap_file;
 #[macro_use]
