@@ -44,11 +44,23 @@ pub struct Controller {
 
 impl Controller {
     /// Create a new controller.  The controlled file is initially empty.
-    pub fn new() -> Controller {
+    pub fn new(title: impl Into<String>) -> Controller {
         Controller {
-            data: Arc::new(RwLock::new(FileData::new())),
+            data: Arc::new(RwLock::new(FileData::new(title))),
             notify: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Returns a copy of the current title.
+    pub fn title(&self) -> String {
+        let data = self.data.read().unwrap();
+        data.title.clone()
+    }
+
+    /// Returns a copy of the current file info.
+    pub fn info(&self) -> String {
+        let data = self.data.read().unwrap();
+        data.info.clone()
     }
 
     /// Apply a sequence of changes to the controlled file.
@@ -69,6 +81,18 @@ impl Controller {
 
 /// A change to apply to a controlled file.
 pub enum Change {
+    /// Set the title for the file.
+    SetTitle {
+        /// The new title.
+        title: String,
+    },
+
+    /// Set the file information for the file.
+    SetInfo {
+        /// The text of the new file info.
+        info: String,
+    },
+
     /// Append a single line to the file.
     AppendLine {
         /// The content of the new line.
@@ -157,12 +181,14 @@ impl FileInfo for ControlledFile {
 
     /// The file's title.
     fn title(&self) -> Cow<'_, str> {
-        Cow::Borrowed("")
+        let data = self.data.read().unwrap();
+        Cow::Owned(data.title.clone())
     }
 
     /// The file's info.
     fn info(&self) -> Cow<'_, str> {
-        Cow::Borrowed("CONTROLLED")
+        let data = self.data.read().unwrap();
+        Cow::Owned(data.info.clone())
     }
 
     /// True once the file is loaded and all newlines have been parsed.
@@ -204,12 +230,18 @@ impl FileInfo for ControlledFile {
 }
 
 struct FileData {
+    title: String,
+    info: String,
     lines: Vec<LineData>,
 }
 
 impl FileData {
-    fn new() -> FileData {
-        FileData { lines: Vec::new() }
+    fn new(title: impl Into<String>) -> FileData {
+        FileData {
+            title: title.into(),
+            info: String::new(),
+            lines: Vec::new(),
+        }
     }
 
     fn line_mut(&mut self, index: usize) -> Result<&mut LineData> {
@@ -222,6 +254,12 @@ impl FileData {
 
     fn apply_change(&mut self, change: Change) -> Result<()> {
         match change {
+            Change::SetTitle { title } => {
+                self.title = title;
+            }
+            Change::SetInfo { info } => {
+                self.info = info;
+            }
             Change::AppendLine { content } => {
                 self.lines.push(LineData::with_content(content));
             }

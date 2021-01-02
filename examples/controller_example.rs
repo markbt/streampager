@@ -40,7 +40,7 @@ fn make_add_text(controller: Controller, action_sender: ActionSender) -> impl Fn
 }
 
 fn main() -> Result<()> {
-    let controller = Controller::new();
+    let controller = Controller::new("Example");
 
     controller.apply_changes(vec![Change::AppendLines {
         contents: vec![
