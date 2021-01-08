@@ -5,6 +5,7 @@ use anyhow::Result;
 use streampager::action::{Action, ActionSender};
 use streampager::bindings::{Binding, Category, KeyCode, Keymap, Modifiers};
 use streampager::control::{Change, Controller};
+use streampager::file::FileIndex;
 use streampager::Pager;
 
 fn start_thread(controller: Controller) {
@@ -28,14 +29,20 @@ fn start_thread(controller: Controller) {
     });
 }
 
-fn make_add_text(controller: Controller, action_sender: ActionSender) -> impl Fn() + Send + Sync {
-    move || {
-        controller
-            .apply_changes(vec![Change::AppendLine {
-                content: b"some more text".to_vec(),
-            }])
-            .unwrap();
-        action_sender.send(Action::ScrollDownLines(1)).unwrap();
+fn make_add_text(
+    controller: Controller,
+    action_sender: ActionSender,
+    file_index: FileIndex,
+) -> impl Fn(FileIndex) + Send + Sync {
+    move |index| {
+        if index == file_index {
+            controller
+                .apply_changes(vec![Change::AppendLine {
+                    content: b"some more text".to_vec(),
+                }])
+                .unwrap();
+            action_sender.send(Action::ScrollDownLines(1)).unwrap();
+        }
     }
 }
 
@@ -51,12 +58,13 @@ fn main() -> Result<()> {
     }])?;
 
     let mut pager = Pager::new_using_system_terminal()?;
+    let file_index = pager.add_controlled_file(&controller)?;
 
     let mut keymap = Keymap::default();
     let add_text = Binding::custom(
         Category::General,
         "Add some text to the file",
-        make_add_text(controller.clone(), pager.action_sender()),
+        make_add_text(controller.clone(), pager.action_sender(), file_index),
     );
 
     keymap.bind(Modifiers::NONE, KeyCode::Char('x'), Some(add_text.clone()));
@@ -65,7 +73,6 @@ fn main() -> Result<()> {
     start_thread(controller.clone());
 
     pager.set_keymap(keymap);
-    pager.add_controlled_file(&controller)?;
     pager.run()?;
 
     Ok(())

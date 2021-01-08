@@ -1137,7 +1137,7 @@ impl Screen {
                     let action = action.clone();
                     return self.dispatch_action(action, event_sender);
                 }
-                Binding::Custom(b) => b.run(),
+                Binding::Custom(b) => b.run(self.file.index()),
                 Binding::Unrecognized(_) => {}
             }
         }
