@@ -67,12 +67,11 @@ fn main() -> Result<()> {
     );
 
     let mut pager = Pager::new_using_system_terminal()?;
-    pager
-        .add_output_stream(out_read, "output stream")?
-        .add_error_stream(err_read, "error stream")?
-        .set_progress_stream(prog_read)
-        .set_interface_mode(std::env::var("MODE").unwrap_or_default().as_ref())
-        .set_keymap(keymap);
+    pager.add_stream(out_read, "output stream")?;
+    pager.add_error_stream(err_read, "error stream")?;
+    pager.set_progress_stream(prog_read);
+    pager.set_interface_mode(std::env::var("MODE").unwrap_or_default().as_ref());
+    pager.set_keymap(keymap);
 
     pager.run()?;
 

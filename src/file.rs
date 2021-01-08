@@ -7,8 +7,8 @@ use enum_dispatch::enum_dispatch;
 pub(crate) use crate::control::ControlledFile;
 pub(crate) use crate::loaded_file::LoadedFile;
 
-/// A global index for files that streampager is paging.
-pub(crate) type FileIndex = usize;
+/// An identifier for a file streampager is paging.
+pub type FileIndex = usize;
 
 /// Default value for `needed_lines`.
 pub(crate) const DEFAULT_NEEDED_LINES: usize = 5000;

@@ -9,7 +9,6 @@ use std::ffi::OsStr;
 use std::io::Read;
 use std::sync::Arc;
 
-pub use error::{Error, Result};
 use termwiz::caps::ColorLevel;
 use termwiz::caps::{Capabilities, ProbeHints};
 use termwiz::terminal::{SystemTerminal, Terminal};
@@ -56,6 +55,9 @@ use control::Controller;
 use event::EventStream;
 use file::{ControlledFile, File, FileInfo, LoadedFile};
 use progress::Progress;
+
+pub use error::{Error, Result};
+pub use file::FileIndex;
 
 /// The main pager state.
 pub struct Pager {
@@ -156,17 +158,17 @@ impl Pager {
         })
     }
 
-    /// Add an output file to be paged.
-    pub fn add_output_stream(
+    /// Add a stream to be paged.
+    pub fn add_stream(
         &mut self,
         stream: impl Read + Send + 'static,
         title: &str,
-    ) -> Result<&mut Self> {
+    ) -> Result<FileIndex> {
         let index = self.files.len();
         let event_sender = self.events.sender();
         let file = LoadedFile::new_streamed(index, stream, title, event_sender)?;
         self.files.push(file.into());
-        Ok(self)
+        Ok(index)
     }
 
     /// Attach an error stream to the previously added output stream.
@@ -174,7 +176,7 @@ impl Pager {
         &mut self,
         stream: impl Read + Send + 'static,
         title: &str,
-    ) -> Result<&mut Self> {
+    ) -> Result<FileIndex> {
         let index = self.files.len();
         let event_sender = self.events.sender();
         let file = LoadedFile::new_streamed(index, stream, title, event_sender)?;
@@ -183,34 +185,36 @@ impl Pager {
                 .insert(out_file.index(), file.clone().into());
         }
         self.files.push(file.into());
-        Ok(self)
+        Ok(index)
     }
 
     /// Attach a file from disk.
-    pub fn add_output_file(&mut self, filename: &OsStr) -> Result<&mut Self> {
+    pub fn add_file(&mut self, filename: &OsStr) -> Result<FileIndex> {
         let index = self.files.len();
         let event_sender = self.events.sender();
         let file = LoadedFile::new_file(index, filename, event_sender)?;
         self.files.push(file.into());
-        Ok(self)
+        Ok(index)
     }
 
     /// Attach a controlled file.
-    pub fn add_controlled_file(&mut self, controller: &Controller) -> Result<&mut Self> {
+    pub fn add_controlled_file(&mut self, controller: &Controller) -> Result<FileIndex> {
         let index = self.files.len();
         let event_sender = self.events.sender();
         let file = ControlledFile::new(controller.clone(), index, event_sender);
         self.files.push(file.into());
-        Ok(self)
+        Ok(index)
     }
 
     /// Attach the output and error streams from a subprocess.
+    ///
+    /// Returns the file index for each stream.
     pub fn add_subprocess<I, S>(
         &mut self,
         command: &OsStr,
         args: I,
         title: &str,
-    ) -> Result<&mut Self>
+    ) -> Result<(FileIndex, FileIndex)>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
@@ -222,50 +226,43 @@ impl Pager {
         self.error_files.insert(index, err_file.clone().into());
         self.files.push(out_file.into());
         self.files.push(err_file.into());
-        Ok(self)
+        Ok((index, index + 1))
     }
 
     /// Set the progress stream.
-    pub fn set_progress_stream(&mut self, stream: impl Read + Send + 'static) -> &mut Self {
+    pub fn set_progress_stream(&mut self, stream: impl Read + Send + 'static) {
         let event_sender = self.events.sender();
         self.progress = Some(Progress::new(stream, event_sender));
-        self
     }
 
     /// Set when to use full screen mode. See [`InterfaceMode`] for details.
-    pub fn set_interface_mode(&mut self, value: impl Into<InterfaceMode>) -> &mut Self {
+    pub fn set_interface_mode(&mut self, value: impl Into<InterfaceMode>) {
         self.config.interface_mode = value.into();
-        self
     }
 
     /// Set whether scrolling can past end of file.
-    pub fn set_scroll_past_eof(&mut self, value: bool) -> &mut Self {
+    pub fn set_scroll_past_eof(&mut self, value: bool) {
         self.config.scroll_past_eof = value;
-        self
     }
 
     /// Set how many lines to read ahead.
-    pub fn set_read_ahead_lines(&mut self, lines: usize) -> &mut Self {
+    pub fn set_read_ahead_lines(&mut self, lines: usize) {
         self.config.read_ahead_lines = lines;
-        self
     }
 
     /// Set default wrapping mode. See [`WrappingMode`] for details.
-    pub fn set_wrapping_mode(&mut self, value: impl Into<WrappingMode>) -> &mut Self {
+    pub fn set_wrapping_mode(&mut self, value: impl Into<WrappingMode>) {
         self.config.wrapping_mode = value.into();
-        self
     }
 
     /// Set keymap name.
-    pub fn set_keymap_name(&mut self, keymap: impl Into<String>) -> &mut Self {
+    pub fn set_keymap_name(&mut self, keymap: impl Into<String>) {
         self.config.keymap = KeymapConfig::Name(keymap.into());
-        self
     }
 
     /// Set keymap.
-    pub fn set_keymap(&mut self, keymap: Keymap) -> &mut Self {
+    pub fn set_keymap(&mut self, keymap: Keymap) {
         self.config.keymap = KeymapConfig::Keymap(Arc::new(keymap));
-        self
     }
 
     /// Create an action sender which can be used to send `Action`s to this pager.
