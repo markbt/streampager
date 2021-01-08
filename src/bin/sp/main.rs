@@ -151,15 +151,15 @@ fn open_files(args: ArgMatches) -> Result<(), Error> {
             FileSpec::Stdin => {
                 let title = env::var("PAGER_TITLE").ok();
                 let title = title.as_ref().map(String::as_ref).unwrap_or("");
-                pager.add_output_stream(std::io::stdin(), title)?;
+                pager.add_stream(std::io::stdin(), title)?;
             }
             FileSpec::Named(filename) => {
-                pager.add_output_file(filename)?;
+                pager.add_file(filename)?;
             }
             #[cfg(unix)]
             FileSpec::Fd(fd, title) => {
                 let stream = unsafe { std::fs::File::from_raw_fd(*fd) };
-                pager.add_output_stream(stream, title)?;
+                pager.add_stream(stream, title)?;
             }
             #[cfg(unix)]
             FileSpec::ErrorFd(fd, title) => {
