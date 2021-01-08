@@ -26,7 +26,7 @@ mod direct;
 mod display;
 pub mod error;
 mod event;
-mod file;
+pub mod file;
 mod help;
 mod keymap_error;
 #[cfg(feature = "keymap-file")]

@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use thiserror::Error;
 
 use crate::action::Action;
+use crate::file::FileIndex;
 
 /// Key codes for key bindings.
 ///
@@ -120,11 +121,16 @@ pub enum Binding {
 }
 
 impl Binding {
-    /// Create new custom binding config.
+    /// Create new custom binding.
+    ///
+    /// When this binding is invoked, the callback is called.  The callback is provided with the
+    /// file index of the file that is currently being displayed.  Note that this may differ from
+    /// any of the file indexes returned by the `add` methods on the `Pager`, as additional file
+    /// indexes can be allocated, e.g. for the help screen.
     pub fn custom(
         category: Category,
         description: impl Into<String>,
-        callback: impl Fn() + Send + Sync + 'static,
+        callback: impl Fn(FileIndex) + Send + Sync + 'static,
     ) -> Self {
         Binding::Custom(CustomBinding::new(category, description, callback))
     }
@@ -253,7 +259,7 @@ pub struct CustomBinding {
     description: String,
 
     /// Called when the action is triggered.
-    callback: Arc<dyn Fn() + Sync + Send>,
+    callback: Arc<dyn Fn(FileIndex) + Sync + Send>,
 }
 
 impl CustomBinding {
@@ -264,7 +270,7 @@ impl CustomBinding {
     pub fn new(
         category: Category,
         description: impl Into<String>,
-        callback: impl Fn() + Sync + Send + 'static,
+        callback: impl Fn(FileIndex) + Sync + Send + 'static,
     ) -> CustomBinding {
         CustomBinding {
             id: CUSTOM_BINDING_ID.fetch_add(1, Ordering::SeqCst),
@@ -275,8 +281,8 @@ impl CustomBinding {
     }
 
     /// Trigger the binding and run its callback.
-    pub fn run(&self) {
-        (self.callback)()
+    pub fn run(&self, file_index: FileIndex) {
+        (self.callback)(file_index)
     }
 }
 
