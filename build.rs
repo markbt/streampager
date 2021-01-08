@@ -11,10 +11,12 @@ mod app;
 
 fn main() {
     let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR should be set");
-    fs::create_dir_all(&out_dir).expect(&format!(
-        "couldn't create output directory {}",
-        out_dir.to_string_lossy()
-    ));
+    fs::create_dir_all(&out_dir).unwrap_or_else(|_| {
+        panic!(
+            "couldn't create output directory {}",
+            out_dir.to_string_lossy()
+        )
+    });
 
     generate_man_page(&out_dir).expect("couldn't generate manpage");
 

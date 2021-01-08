@@ -171,7 +171,7 @@ pub(crate) fn start(
         // Only take the first output and error. This emulates the behavior that
         // the main pager can only display one stream at a time.
         let output_files = &files[0..1.min(files.len())];
-        let error_files = match error_files.iter().nth(0) {
+        let error_files = match error_files.iter().next() {
             None => Vec::new(),
             Some((_i, file)) => vec![file.clone()],
         };

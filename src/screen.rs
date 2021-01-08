@@ -332,7 +332,7 @@ impl Screen {
                 row_contents[row + progress_line] = RowContent::ProgressLine(progress_line);
             }
             row -= render.error_file_height;
-            render.error_file_last_line_portion = error_file_line_portions.iter().next().cloned();
+            render.error_file_last_line_portion = error_file_line_portions.get(0).cloned();
             for (error_file_row, error_file_line_portion) in
                 error_file_line_portions.into_iter().rev().enumerate()
             {

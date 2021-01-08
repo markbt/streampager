@@ -74,7 +74,7 @@ impl From<&str> for InterfaceMode {
             "direct" => InterfaceMode::Direct,
             "hybrid" => InterfaceMode::Hybrid,
             s if s.starts_with("delayed") => {
-                let duration = s.rsplit(':').nth(0).unwrap_or("inf");
+                let duration = s.rsplit(':').next().unwrap_or("inf");
                 let duration = if duration.ends_with("ms") {
                     // ex. delayed:100ms
                     Duration::from_millis(duration.trim_end_matches("ms").parse().unwrap_or(0))
@@ -203,7 +203,7 @@ impl Config {
     }
 
     /// Modify [`Config`] using environment variables.
-    pub fn with_env(mut self: Self) -> Self {
+    pub fn with_env(mut self) -> Self {
         use std::env::var;
         if let Ok(s) = var("SP_INTERFACE_MODE") {
             self.interface_mode = InterfaceMode::from(s.as_ref());

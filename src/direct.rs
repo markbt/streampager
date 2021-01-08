@@ -115,10 +115,7 @@ pub(crate) fn direct<T: Terminal>(
 
     let mut state = StreamingLines::default();
     let delayed = delayed_deadline.is_some();
-    let has_one_screen_limit = match mode {
-        InterfaceMode::Direct => false,
-        _ => true,
-    };
+    let has_one_screen_limit = !matches!(mode, InterfaceMode::Direct);
     let mut render = |term: &mut T, h: usize, w: usize| -> Result<Option<Outcome>> {
         let append_output_lines = collect_unread(output_files, h + 2);
         let append_error_lines = collect_unread(error_files, h + 2);
