@@ -6,7 +6,7 @@ use streampager::action::{Action, ActionSender};
 use streampager::bindings::{Binding, Category, KeyCode, Keymap, Modifiers};
 use streampager::control::{Change, Controller};
 use streampager::file::FileIndex;
-use streampager::Pager;
+use streampager::pager::Pager;
 
 fn start_thread(controller: Controller) {
     std::thread::spawn(move || {
