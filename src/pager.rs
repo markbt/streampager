@@ -15,7 +15,7 @@ use crate::config::{Config, InterfaceMode, KeymapConfig, WrappingMode};
 use crate::control::Controller;
 use crate::error::{Error, Result};
 use crate::event::EventStream;
-use crate::file::{ControlledFile, File, FileInfo, LoadedFile, FileIndex};
+use crate::file::{ControlledFile, File, FileIndex, FileInfo, LoadedFile};
 use crate::progress::Progress;
 
 /// The main pager state.

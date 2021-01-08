@@ -28,19 +28,14 @@ pub(crate) fn goto() -> Prompt {
                     _ => {}
                 }
                 let lines = screen.file.lines() as isize;
-                if value.ends_with('%') {
+                if let Some(value_percent) = value.strip_suffix('%') {
                     // Percentage
-                    match str::parse::<isize>(&value[..value.len() - 1]) {
-                        Ok(value_percent) => {
-                            let value_percent = if value_percent <= -100 {
-                                0
-                            } else if value_percent > 100 {
-                                100
-                            } else if value_percent < 0 {
-                                100 + value_percent
-                            } else {
-                                value_percent
-                            };
+                    match str::parse::<isize>(value_percent) {
+                        Ok(mut value_percent) => {
+                            value_percent = value_percent.max(-100).min(100);
+                            if value_percent < 0 {
+                                value_percent += 100;
+                            }
                             let value = value_percent * (lines - 1) / 100;
                             screen.scroll_to(value as usize);
                         }
