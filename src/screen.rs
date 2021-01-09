@@ -33,7 +33,7 @@ use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;
-use termwiz::surface::{CursorShape, CursorVisibility, Position};
+use termwiz::surface::{CursorVisibility, Position};
 
 use crate::bindings::{Binding, Keymap};
 use crate::command;
@@ -747,7 +747,7 @@ impl Screen {
                         .expect("prompt row should have been calculated"),
                 ),
             });
-            changes.push(Change::CursorShape(CursorShape::Default));
+            changes.push(Change::CursorVisibility(CursorVisibility::Visible));
         } else {
             changes.push(Change::CursorPosition {
                 x: Position::Absolute(0),
