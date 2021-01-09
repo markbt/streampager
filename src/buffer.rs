@@ -7,7 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use memmap::MmapMut;
+use memmap2::MmapMut;
 
 /// Fillable buffer
 ///
