@@ -43,8 +43,8 @@ Options
 
 *-D* _DELAY_, *--delayed* _DELAY_::
   Wait for _DELAY_ seconds to see if the input completes before paging.  If
-  the input completes in time, and is shorter than one page, then do not
-  start the pager, and instead just show the output.
+  the input completes in time and is shorter than one page, then do not
+  start the pager and instead just show the output.
 
 *-X*, *--no-alternate*::
   Start showing output immediately, but do not start paging until a full
@@ -71,22 +71,24 @@ invoked as the final command in a pipeline:
 
     command | sp
 
-The default paging behaviour depends on how much data is received:
+By default, *sp* will immediately enter fullscreen mode and page
+the input.
 
-* For programs that produce less than a screenful of output quickly and then
-  exit, *sp* prints the output to the terminal without paging and also exits.
-* For programs that produce output slowly, *sp* will wait for two seconds
-  to see if the program will stop with less than a screenful of output.
-  After two seconds *sp* stops waiting and starts paging.
+This can be customized:
 
 This behaviour can be customized:
 
-* The `-X` option prevents the initial buffering of input.  Instead, it will
-  be displayed directly until either a full screen of input is received,
-  or **`Space`** is pressed.
-* The `-D` option changes the delay from its default two seconds.
-* The `-F` option disables the delay entirely, causing fullscreen mode to
-  be entered immediately.
+* The *-X* option prevents fullscreen mode.  Instead, output will be displayed
+  directly to the terminal until either a full screen of input is received, or
+  *Space* is pressed.
+* The *-D* _DELAY_ option causes *sp* to wait for a number of seconds
+  to see if the input stream terminates early with less than a full screen of
+  output.  If it does, streampager displays this directly to the terminal and
+  exits.  If the input stream produces more than a full screen of data, the
+  delay expires, or *Space* is pressed, *sp* enters full screen
+  mode.
+* The *-F* option re-enables immediate fullscreen mode if a different mode has
+  been selected in the *streampager* configuration file.
 
 An indicator at the bottom right of the screen shows if the input pipe is
 still connected, and whether new data is being loaded.
