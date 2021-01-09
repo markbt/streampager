@@ -16,6 +16,10 @@ output and error streams for paging.
 Press **h** from within *streampager* to display the keyboard shortcuts.
 Press **q** to exit.
 
+## Screenshot
+
+<img src="screenshot.png" alt="streampager running in a terminal showing this README file" width="662px">
+
 ## Basic Usage for *sp*
 
 If invoked with no arguments, *sp* reads from stdin, expecting to be invoked as
