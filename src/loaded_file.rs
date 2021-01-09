@@ -15,7 +15,7 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use memmap::Mmap;
+use memmap2::Mmap;
 use notify::{DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::buffer::Buffer;
