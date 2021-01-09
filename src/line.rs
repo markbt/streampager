@@ -87,7 +87,7 @@ impl AttributeState {
             match *sgr {
                 Sgr::Reset => {
                     // Reset doesn't clear the hyperlink.
-                    let hyperlink = self.attrs.hyperlink.take();
+                    let hyperlink = self.attrs.hyperlink().cloned();
                     self.attrs = CellAttributes::default();
                     self.attrs.set_hyperlink(hyperlink);
                 }
@@ -119,6 +119,12 @@ impl AttributeState {
                     self.attrs.set_background(color);
                 }
                 Sgr::Font(_) => {}
+                Sgr::UnderlineColor(color) => {
+                    self.attrs.set_underline_color(color);
+                }
+                Sgr::Overline(enable) => {
+                    self.attrs.set_overline(enable);
+                }
             }
         }
         self.changed = true;

@@ -33,7 +33,7 @@ use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
 use termwiz::input::KeyEvent;
 use termwiz::surface::change::Change;
-use termwiz::surface::{CursorShape, Position};
+use termwiz::surface::{CursorShape, CursorVisibility, Position};
 
 use crate::bindings::{Binding, Keymap};
 use crate::command;
@@ -259,7 +259,7 @@ impl Screen {
         let mut changes = Vec::new();
 
         // Hide the cursor while we render things.
-        changes.push(Change::CursorShape(CursorShape::Hidden));
+        changes.push(Change::CursorVisibility(CursorVisibility::Hidden));
 
         // Set up the render state.
         let mut render: RenderState = RenderState::default();
