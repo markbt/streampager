@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use bit_set::BitSet;
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
-use termwiz::surface::{CursorShape, CursorVisibility, Position};
+use termwiz::surface::{CursorVisibility, Position};
 use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
@@ -314,7 +314,7 @@ impl StreamingLines {
                 x: Position::Absolute(0),
                 y: Position::Relative(1),
             });
-            changes.push(Change::CursorShape(CursorShape::Default));
+            changes.push(Change::CursorVisibility(CursorVisibility::Visible));
             self.cursor_hidden = false;
         }
         changes
