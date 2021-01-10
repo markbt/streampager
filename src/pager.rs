@@ -90,7 +90,9 @@ impl Pager {
         input: impl std::io::Read + termwiz::istty::IsTty + std::os::windows::io::AsRawHandle,
         output: impl std::io::Write + termwiz::istty::IsTty + std::os::windows::io::AsRawHandle,
     ) -> Result<Self> {
-        Self::new_with_terminal_func(move |caps| SystemTerminal::new_with(caps, input, output))
+        Self::new_with_terminal_func(move |caps| {
+            SystemTerminal::new_with(caps, input, output).map_err(Error::Termwiz)
+        })
     }
 
     fn new_with_terminal_func(
