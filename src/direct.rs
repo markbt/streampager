@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use bit_set::BitSet;
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
-use termwiz::surface::{CursorShape, Position};
+use termwiz::surface::{CursorVisibility, Position};
 use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
@@ -289,12 +289,12 @@ impl StreamingLines {
                 y: Position::Relative(0),
             });
             if !self.cursor_hidden {
-                changes.push(Change::CursorShape(CursorShape::Hidden));
+                changes.push(Change::CursorVisibility(CursorVisibility::Hidden));
                 self.cursor_hidden = true;
             }
             progress_row_count -= 1;
         } else if self.cursor_hidden {
-            changes.push(Change::CursorShape(CursorShape::Default));
+            changes.push(Change::CursorVisibility(CursorVisibility::Visible));
             self.cursor_hidden = false;
         }
 
@@ -314,7 +314,7 @@ impl StreamingLines {
                 x: Position::Absolute(0),
                 y: Position::Relative(1),
             });
-            changes.push(Change::CursorShape(CursorShape::Default));
+            changes.push(Change::CursorVisibility(CursorVisibility::Visible));
             self.cursor_hidden = false;
         }
         changes

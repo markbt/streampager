@@ -14,7 +14,7 @@ pub type Result<T> = StdResult<T, Error>;
 pub enum Error {
     /// Comes from [Termwiz](https://crates.io/crates/termwiz).
     #[error("terminal error")]
-    Termwiz(#[source] anyhow::Error),
+    Termwiz(#[source] termwiz::Error),
 
     /// Comes from [Regex](https://github.com/rust-lang/regex).
     #[error("regex error")]

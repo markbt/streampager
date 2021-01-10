@@ -10,7 +10,7 @@ use termwiz::cell::CellAttributes;
 use termwiz::color::ColorAttribute;
 use termwiz::input::InputEvent;
 use termwiz::surface::change::Change;
-use termwiz::surface::{CursorShape, Position};
+use termwiz::surface::{CursorVisibility, Position};
 use termwiz::terminal::Terminal;
 use vec_map::VecMap;
 
@@ -209,7 +209,7 @@ pub(crate) fn start(
         let overlay_height = overlay_height.load(Ordering::SeqCst);
         let scroll_count = 1usize.saturating_sub(overlay_height);
         term.render(&[
-            Change::CursorShape(CursorShape::Default),
+            Change::CursorVisibility(CursorVisibility::Visible),
             Change::AllAttributes(CellAttributes::default()),
             Change::ScrollRegionUp {
                 first_row: 0,
