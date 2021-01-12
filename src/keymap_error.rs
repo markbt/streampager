@@ -24,6 +24,7 @@ pub enum KeymapError {
     UnknownKey(String),
 
     /// Parsing error.
+    #[cfg(feature = "keymap-file")]
     #[error("parse error")]
     Parse(#[from] pest::error::Error<crate::keymap_file::Rule>),
 
@@ -44,6 +45,7 @@ pub enum KeymapError {
 }
 
 impl KeymapError {
+    #[allow(unused)]
     pub(crate) fn with_file(self, file: impl AsRef<Path>) -> Self {
         Self::WithFile {
             error: Box::new(self),
