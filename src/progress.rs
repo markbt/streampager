@@ -49,37 +49,40 @@ impl Progress {
             finished: false,
         }));
         let mut input = BufReader::new(reader);
-        thread::spawn({
-            let inner = inner.clone();
-            let progress_unique = UniqueInstance::new();
-            move || -> Result<()> {
-                loop {
-                    let mut buffer = Vec::with_capacity(PROGRESS_BUFFER_SIZE);
-                    match input.read_until(b'\x0C', &mut buffer) {
-                        Ok(0) | Err(_) => {
-                            let mut inner = inner.write().unwrap();
-                            inner.buffer = Vec::new();
-                            inner.newlines = Vec::new();
-                            inner.finished = true;
-                            return Ok(());
-                        }
-                        Ok(len) => {
-                            buffer.truncate(len - 1);
-                            let mut newlines = Vec::new();
-                            for (i, byte) in buffer.iter().enumerate().take(len - 1) {
-                                if *byte == b'\n' {
-                                    newlines.push(i);
-                                }
+        thread::Builder::new()
+            .name(String::from("sp-progress"))
+            .spawn({
+                let inner = inner.clone();
+                let progress_unique = UniqueInstance::new();
+                move || -> Result<()> {
+                    loop {
+                        let mut buffer = Vec::with_capacity(PROGRESS_BUFFER_SIZE);
+                        match input.read_until(b'\x0C', &mut buffer) {
+                            Ok(0) | Err(_) => {
+                                let mut inner = inner.write().unwrap();
+                                inner.buffer = Vec::new();
+                                inner.newlines = Vec::new();
+                                inner.finished = true;
+                                return Ok(());
                             }
-                            let mut inner = inner.write().unwrap();
-                            inner.buffer = buffer;
-                            inner.newlines = newlines;
-                            event_sender.send_unique(Event::Progress, &progress_unique)?;
+                            Ok(len) => {
+                                buffer.truncate(len - 1);
+                                let mut newlines = Vec::new();
+                                for (i, byte) in buffer.iter().enumerate().take(len - 1) {
+                                    if *byte == b'\n' {
+                                        newlines.push(i);
+                                    }
+                                }
+                                let mut inner = inner.write().unwrap();
+                                inner.buffer = buffer;
+                                inner.newlines = newlines;
+                                event_sender.send_unique(Event::Progress, &progress_unique)?;
+                            }
                         }
                     }
                 }
-            }
-        });
+            })
+            .unwrap();
         Progress { inner }
     }
 

@@ -144,65 +144,68 @@ impl FileData {
         event_sender: EventSender,
     ) -> Result<FileData> {
         let buffers = Arc::new(RwLock::new(Vec::new()));
-        thread::spawn({
-            let buffers = buffers.clone();
-            move || -> Result<()> {
-                let mut offset = 0usize;
-                let mut total_buffer_size = 0usize;
-                let mut waker_mutex = meta.waker_mutex.lock().unwrap();
-                loop {
-                    // Check if a new buffer must be allocated.
-                    if offset == total_buffer_size {
-                        let mut buffers = buffers.write().unwrap();
-                        buffers.push(Buffer::new(BUFFER_SIZE));
-                        total_buffer_size += BUFFER_SIZE;
-                    }
-                    let buffers = buffers.read().unwrap();
-                    let mut write = buffers.last().unwrap().write();
-                    match input.read(&mut write) {
-                        Ok(0) => {
-                            // The end of the file has been reached.  Complete.
-                            meta.finished.store(true, Ordering::SeqCst);
-                            event_sender.send(Event::Loaded(meta.index))?;
-                            return Ok(());
+        thread::Builder::new()
+            .name(format!("sp-stream-{}", meta.index))
+            .spawn({
+                let buffers = buffers.clone();
+                move || -> Result<()> {
+                    let mut offset = 0usize;
+                    let mut total_buffer_size = 0usize;
+                    let mut waker_mutex = meta.waker_mutex.lock().unwrap();
+                    loop {
+                        // Check if a new buffer must be allocated.
+                        if offset == total_buffer_size {
+                            let mut buffers = buffers.write().unwrap();
+                            buffers.push(Buffer::new(BUFFER_SIZE));
+                            total_buffer_size += BUFFER_SIZE;
                         }
-                        Ok(len) => {
-                            if meta.dropped.load(Ordering::SeqCst) {
+                        let buffers = buffers.read().unwrap();
+                        let mut write = buffers.last().unwrap().write();
+                        match input.read(&mut write) {
+                            Ok(0) => {
+                                // The end of the file has been reached.  Complete.
+                                meta.finished.store(true, Ordering::SeqCst);
+                                event_sender.send(Event::Loaded(meta.index))?;
                                 return Ok(());
                             }
-                            // Some data has been read.  Parse its newlines.
-                            let line_count = {
-                                let mut newlines = meta.newlines.write().unwrap();
-                                for i in 0..len {
-                                    if write[i] == b'\n' {
-                                        newlines.push(offset + i);
-                                    }
-                                }
-                                // Mark that the data has been written.  This
-                                // needs to be done here before we drop the
-                                // lock for `newlines`.
-                                offset += len;
-                                write.written(len);
-                                meta.length.fetch_add(len, Ordering::SeqCst);
-                                newlines.len()
-                            };
-                            while line_count >= meta.needed_lines.load(Ordering::SeqCst) {
-                                // Enough data is loaded. Pause.
-                                waker_mutex = meta.waker.wait(waker_mutex).unwrap();
+                            Ok(len) => {
                                 if meta.dropped.load(Ordering::SeqCst) {
                                     return Ok(());
                                 }
+                                // Some data has been read.  Parse its newlines.
+                                let line_count = {
+                                    let mut newlines = meta.newlines.write().unwrap();
+                                    for i in 0..len {
+                                        if write[i] == b'\n' {
+                                            newlines.push(offset + i);
+                                        }
+                                    }
+                                    // Mark that the data has been written.  This
+                                    // needs to be done here before we drop the
+                                    // lock for `newlines`.
+                                    offset += len;
+                                    write.written(len);
+                                    meta.length.fetch_add(len, Ordering::SeqCst);
+                                    newlines.len()
+                                };
+                                while line_count >= meta.needed_lines.load(Ordering::SeqCst) {
+                                    // Enough data is loaded. Pause.
+                                    waker_mutex = meta.waker.wait(waker_mutex).unwrap();
+                                    if meta.dropped.load(Ordering::SeqCst) {
+                                        return Ok(());
+                                    }
+                                }
                             }
-                        }
-                        Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
-                        Err(e) => {
-                            let mut error = meta.error.write().unwrap();
-                            *error = Some(e.into());
+                            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                            Err(e) => {
+                                let mut error = meta.error.write().unwrap();
+                                *error = Some(e.into());
+                            }
                         }
                     }
                 }
-            }
-        });
+            })
+            .unwrap();
         Ok(FileData::Streamed { buffers })
     }
 
@@ -219,175 +222,187 @@ impl FileData {
         let buffer_cache = Arc::new(Mutex::new(BufferCache::new(path, BUFFER_SIZE, CACHE_SIZE)));
 
         // Create a thread to watch for file change notifications.
-        thread::spawn({
-            let events = events.clone();
-            let appending = appending.clone();
-            let meta = meta.clone();
-            let path = path.to_path_buf();
-            move || -> Result<()> {
-                loop {
-                    let (tx, rx) = mpsc::channel();
-                    let mut watcher: RecommendedWatcher =
-                        Watcher::new(tx, Duration::from_millis(500)).expect("create watcher");
-                    watcher
-                        .watch(path.clone(), RecursiveMode::NonRecursive)
-                        .expect("watch file");
+        thread::Builder::new()
+            .name(format!("sp-fchg-{}", meta.index))
+            .spawn({
+                let events = events.clone();
+                let appending = appending.clone();
+                let meta = meta.clone();
+                let path = path.to_path_buf();
+                move || -> Result<()> {
                     loop {
-                        if meta.dropped.load(Ordering::SeqCst) {
-                            return Ok(());
-                        }
-                        let event = rx.recv();
-                        match event {
-                            Ok(DebouncedEvent::NoticeWrite(_)) => {
-                                appending.store(true, Ordering::SeqCst);
-                                events.send(FileEvent::Append)?;
+                        let (tx, rx) = mpsc::channel();
+                        let mut watcher: RecommendedWatcher =
+                            Watcher::new(tx, Duration::from_millis(500)).expect("create watcher");
+                        watcher
+                            .watch(path.clone(), RecursiveMode::NonRecursive)
+                            .expect("watch file");
+                        loop {
+                            if meta.dropped.load(Ordering::SeqCst) {
+                                return Ok(());
                             }
-                            Ok(DebouncedEvent::Write(_)) => {
-                                appending.store(false, Ordering::SeqCst);
-                                events.send(FileEvent::Append)?;
+                            let event = rx.recv();
+                            match event {
+                                Ok(DebouncedEvent::NoticeWrite(_)) => {
+                                    appending.store(true, Ordering::SeqCst);
+                                    events.send(FileEvent::Append)?;
+                                }
+                                Ok(DebouncedEvent::Write(_)) => {
+                                    appending.store(false, Ordering::SeqCst);
+                                    events.send(FileEvent::Append)?;
+                                }
+                                Ok(DebouncedEvent::Create(_)) => {
+                                    events.send(FileEvent::Append)?;
+                                }
+                                Ok(DebouncedEvent::Rename(_, _)) => {
+                                    events.send(FileEvent::Reload)?;
+                                }
+                                Ok(DebouncedEvent::NoticeRemove(_))
+                                | Ok(DebouncedEvent::Chmod(_)) => {
+                                    events.send(FileEvent::Reload)?;
+                                    break;
+                                }
+                                Err(_) => {
+                                    // The watcher failed for some reason.
+                                    // Wait before retrying.
+                                    thread::sleep(Duration::from_secs(1));
+                                    break;
+                                }
+                                _ => {}
                             }
-                            Ok(DebouncedEvent::Create(_)) => {
-                                events.send(FileEvent::Append)?;
-                            }
-                            Ok(DebouncedEvent::Rename(_, _)) => {
-                                events.send(FileEvent::Reload)?;
-                            }
-                            Ok(DebouncedEvent::NoticeRemove(_)) | Ok(DebouncedEvent::Chmod(_)) => {
-                                events.send(FileEvent::Reload)?;
-                                break;
-                            }
-                            Err(_) => {
-                                // The watcher failed for some reason.
-                                // Wait before retrying.
-                                thread::sleep(Duration::from_secs(1));
-                                break;
-                            }
-                            _ => {}
                         }
                     }
                 }
-            }
-        });
+            })
+            .unwrap();
 
         // Create a thread to load the file.
-        thread::spawn({
-            let buffer_cache = buffer_cache.clone();
-            let path = path.to_path_buf();
-            move || -> Result<()> {
-                let loaded_instance = UniqueInstance::new();
-                let appending_instance = UniqueInstance::new();
-                let reloading_instance = UniqueInstance::new();
-                let mut total_length = 0;
-                let mut end_data = Vec::new();
-                loop {
-                    meta.length.store(total_length, Ordering::SeqCst);
-                    if let Some(mut file) = file.take() {
-                        let mut buffer = Vec::new();
-                        buffer.resize(BUFFER_SIZE, 0);
-                        loop {
-                            match file.read(buffer.as_mut_slice()) {
-                                Ok(0) => break,
-                                Ok(len) => {
-                                    if meta.dropped.load(Ordering::SeqCst) {
-                                        return Ok(());
-                                    }
-                                    let mut newlines = meta.newlines.write().unwrap();
-                                    for (i, byte) in buffer.iter().enumerate().take(len) {
-                                        if *byte == b'\n' {
-                                            newlines.push(total_length + i);
+        thread::Builder::new()
+            .name(format!("sp-file-{}", meta.index))
+            .spawn({
+                let buffer_cache = buffer_cache.clone();
+                let path = path.to_path_buf();
+                move || -> Result<()> {
+                    let loaded_instance = UniqueInstance::new();
+                    let appending_instance = UniqueInstance::new();
+                    let reloading_instance = UniqueInstance::new();
+                    let mut total_length = 0;
+                    let mut end_data = Vec::new();
+                    loop {
+                        meta.length.store(total_length, Ordering::SeqCst);
+                        if let Some(mut file) = file.take() {
+                            let mut buffer = Vec::new();
+                            buffer.resize(BUFFER_SIZE, 0);
+                            loop {
+                                match file.read(buffer.as_mut_slice()) {
+                                    Ok(0) => break,
+                                    Ok(len) => {
+                                        if meta.dropped.load(Ordering::SeqCst) {
+                                            return Ok(());
                                         }
+                                        let mut newlines = meta.newlines.write().unwrap();
+                                        for (i, byte) in buffer.iter().enumerate().take(len) {
+                                            if *byte == b'\n' {
+                                                newlines.push(total_length + i);
+                                            }
+                                        }
+                                        total_length += len;
+                                        meta.length.store(total_length, Ordering::SeqCst);
                                     }
-                                    total_length += len;
-                                    meta.length.store(total_length, Ordering::SeqCst);
+                                    Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                                    Err(e) => {
+                                        let mut error = meta.error.write().unwrap();
+                                        *error = Some(e.into());
+                                    }
                                 }
-                                Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                            }
+
+                            // Attempt to read the last 4k of the file.  If the file changes, we will
+                            // check this portion of the file to see if we need to reload the file.
+                            let end_len = total_length.min(4096);
+                            end_data.clear();
+                            if file.seek(SeekFrom::End(-(end_len as i64))).is_ok() {
+                                end_data.resize(end_len, 0);
+                                if let Ok(len) = file.read(end_data.as_mut_slice()) {
+                                    if len != end_len {
+                                        end_data.clear();
+                                    }
+                                } else {
+                                    end_data.clear();
+                                }
+                            }
+                        }
+                        let (send_event, mut reload) = if appending.load(Ordering::SeqCst) {
+                            std::thread::sleep(Duration::from_millis(100));
+                            (false, end_data.is_empty())
+                        } else {
+                            meta.finished.store(true, Ordering::SeqCst);
+                            event_sender
+                                .send_unique(Event::Loaded(meta.index), &loaded_instance)?;
+                            {
+                                let mut reload_old_line_count =
+                                    meta.reload_old_line_count.write().unwrap();
+                                *reload_old_line_count = None;
+                            }
+                            match event_rx.recv() {
+                                Ok(FileEvent::Append) => (true, end_data.is_empty()),
+                                Ok(FileEvent::Reload) => (true, true),
                                 Err(e) => {
                                     let mut error = meta.error.write().unwrap();
                                     *error = Some(e.into());
+                                    return Ok(());
                                 }
                             }
-                        }
-
-                        // Attempt to read the last 4k of the file.  If the file changes, we will
-                        // check this portion of the file to see if we need to reload the file.
-                        let end_len = total_length.min(4096);
-                        end_data.clear();
-                        if file.seek(SeekFrom::End(-(end_len as i64))).is_ok() {
-                            end_data.resize(end_len, 0);
-                            if let Ok(len) = file.read(end_data.as_mut_slice()) {
-                                if len != end_len {
-                                    end_data.clear();
+                        };
+                        match StdFile::open(&path) {
+                            Ok(mut f) => {
+                                if !reload {
+                                    let mut new_data = Vec::new();
+                                    new_data.resize(end_data.len(), 0);
+                                    let offset = total_length - end_data.len();
+                                    if f.seek(SeekFrom::Start(offset as u64)).is_ok()
+                                        && f.read(new_data.as_mut_slice()).ok()
+                                            == Some(end_data.len())
+                                        && new_data == end_data
+                                    {
+                                        // We can continue where we left off
+                                    } else {
+                                        reload = true;
+                                    }
                                 }
-                            } else {
-                                end_data.clear();
+                                file = Some(f);
+                            }
+                            Err(_) => {
+                                reload = true;
                             }
                         }
-                    }
-                    let (send_event, mut reload) = if appending.load(Ordering::SeqCst) {
-                        std::thread::sleep(Duration::from_millis(100));
-                        (false, end_data.is_empty())
-                    } else {
-                        meta.finished.store(true, Ordering::SeqCst);
-                        event_sender.send_unique(Event::Loaded(meta.index), &loaded_instance)?;
-                        {
+                        if reload {
+                            buffer_cache.lock().unwrap().clear();
                             let mut reload_old_line_count =
                                 meta.reload_old_line_count.write().unwrap();
-                            *reload_old_line_count = None;
-                        }
-                        match event_rx.recv() {
-                            Ok(FileEvent::Append) => (true, end_data.is_empty()),
-                            Ok(FileEvent::Reload) => (true, true),
-                            Err(e) => {
-                                let mut error = meta.error.write().unwrap();
-                                *error = Some(e.into());
-                                return Ok(());
+                            let mut newlines = meta.newlines.write().unwrap();
+                            let count = max(
+                                reload_old_line_count.unwrap_or(0),
+                                line_count(newlines.as_slice(), total_length),
+                            );
+                            *reload_old_line_count = Some(count);
+                            newlines.clear();
+                            total_length = 0;
+                            if send_event {
+                                event_sender.send_unique(
+                                    Event::Reloading(meta.index),
+                                    &reloading_instance,
+                                )?;
                             }
-                        }
-                    };
-                    match StdFile::open(&path) {
-                        Ok(mut f) => {
-                            if !reload {
-                                let mut new_data = Vec::new();
-                                new_data.resize(end_data.len(), 0);
-                                let offset = total_length - end_data.len();
-                                if f.seek(SeekFrom::Start(offset as u64)).is_ok()
-                                    && f.read(new_data.as_mut_slice()).ok() == Some(end_data.len())
-                                    && new_data == end_data
-                                {
-                                    // We can continue where we left off
-                                } else {
-                                    reload = true;
-                                }
-                            }
-                            file = Some(f);
-                        }
-                        Err(_) => {
-                            reload = true;
-                        }
-                    }
-                    if reload {
-                        buffer_cache.lock().unwrap().clear();
-                        let mut reload_old_line_count = meta.reload_old_line_count.write().unwrap();
-                        let mut newlines = meta.newlines.write().unwrap();
-                        let count = max(
-                            reload_old_line_count.unwrap_or(0),
-                            line_count(newlines.as_slice(), total_length),
-                        );
-                        *reload_old_line_count = Some(count);
-                        newlines.clear();
-                        total_length = 0;
-                        if send_event {
+                        } else if send_event {
                             event_sender
-                                .send_unique(Event::Reloading(meta.index), &reloading_instance)?;
+                                .send_unique(Event::Appending(meta.index), &appending_instance)?;
                         }
-                    } else if send_event {
-                        event_sender
-                            .send_unique(Event::Appending(meta.index), &appending_instance)?;
+                        meta.finished.store(false, Ordering::SeqCst);
                     }
-                    meta.finished.store(false, Ordering::SeqCst);
                 }
-            }
-        });
+            })
+            .unwrap();
 
         let path = path.to_path_buf();
         Ok(FileData::File {
@@ -417,28 +432,31 @@ impl FileData {
             return Ok(FileData::Empty);
         }
         let mmap = Arc::new(unsafe { Mmap::map(&file)? });
-        thread::spawn({
-            let mmap = mmap.clone();
-            move || -> Result<()> {
-                let len = mmap.len();
-                let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
-                for block in 0..blocks {
-                    if meta.dropped.load(Ordering::SeqCst) {
-                        return Ok(());
-                    }
-                    let mut newlines = meta.newlines.write().unwrap();
-                    for i in block * BUFFER_SIZE..min((block + 1) * BUFFER_SIZE, len) {
-                        if mmap[i] == b'\n' {
-                            newlines.push(i);
+        thread::Builder::new()
+            .name(format!("sp-mmap-{}", meta.index))
+            .spawn({
+                let mmap = mmap.clone();
+                move || -> Result<()> {
+                    let len = mmap.len();
+                    let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
+                    for block in 0..blocks {
+                        if meta.dropped.load(Ordering::SeqCst) {
+                            return Ok(());
+                        }
+                        let mut newlines = meta.newlines.write().unwrap();
+                        for i in block * BUFFER_SIZE..min((block + 1) * BUFFER_SIZE, len) {
+                            if mmap[i] == b'\n' {
+                                newlines.push(i);
+                            }
                         }
                     }
+                    meta.length.store(len, Ordering::SeqCst);
+                    meta.finished.store(true, Ordering::SeqCst);
+                    event_sender.send(Event::Loaded(meta.index))?;
+                    Ok(())
                 }
-                meta.length.store(len, Ordering::SeqCst);
-                meta.finished.store(true, Ordering::SeqCst);
-                event_sender.send(Event::Loaded(meta.index))?;
-                Ok(())
-            }
-        });
+            })
+            .unwrap();
         Ok(FileData::Mapped { mmap })
     }
 
@@ -451,33 +469,36 @@ impl FileData {
         event_sender: EventSender,
     ) -> Result<FileData> {
         let data = Arc::new(data.into());
-        thread::spawn({
-            let data = data.clone();
-            move || -> Result<()> {
-                let len = data.len();
-                let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
-                for block in 0..blocks {
-                    if meta.dropped.load(Ordering::SeqCst) {
-                        return Ok(());
-                    }
-                    let mut newlines = meta.newlines.write().unwrap();
-                    for (i, byte) in data
-                        .iter()
-                        .enumerate()
-                        .skip(block * BUFFER_SIZE)
-                        .take(BUFFER_SIZE)
-                    {
-                        if *byte == b'\n' {
-                            newlines.push(i);
+        thread::Builder::new()
+            .name(format!("sp-static-{}", meta.index))
+            .spawn({
+                let data = data.clone();
+                move || -> Result<()> {
+                    let len = data.len();
+                    let blocks = (len + BUFFER_SIZE - 1) / BUFFER_SIZE;
+                    for block in 0..blocks {
+                        if meta.dropped.load(Ordering::SeqCst) {
+                            return Ok(());
+                        }
+                        let mut newlines = meta.newlines.write().unwrap();
+                        for (i, byte) in data
+                            .iter()
+                            .enumerate()
+                            .skip(block * BUFFER_SIZE)
+                            .take(BUFFER_SIZE)
+                        {
+                            if *byte == b'\n' {
+                                newlines.push(i);
+                            }
                         }
                     }
+                    meta.length.store(len, Ordering::SeqCst);
+                    meta.finished.store(true, Ordering::SeqCst);
+                    event_sender.send(Event::Loaded(meta.index))?;
+                    Ok(())
                 }
-                meta.length.store(len, Ordering::SeqCst);
-                meta.finished.store(true, Ordering::SeqCst);
-                event_sender.send(Event::Loaded(meta.index))?;
-                Ok(())
-            }
-        });
+            })
+            .unwrap();
         Ok(FileData::Static { data })
     }
 
@@ -636,22 +657,25 @@ impl LoadedFile {
         let err = process.stderr.take().unwrap();
         let out_file = LoadedFile::new_streamed(index, out, &title, event_sender.clone())?;
         let err_file = LoadedFile::new_streamed(index + 1, err, &title_err, event_sender.clone())?;
-        thread::spawn({
-            let out_file = out_file.clone();
-            move || -> Result<()> {
-                if let Ok(rc) = process.wait() {
-                    if !rc.success() {
-                        let mut info = out_file.meta.info.write().unwrap();
-                        match rc.code() {
-                            Some(code) => info.push(format!("rc: {}", code)),
-                            None => info.push("killed!".to_string()),
+        thread::Builder::new()
+            .name(format!("sp-cmd-{}", index))
+            .spawn({
+                let out_file = out_file.clone();
+                move || -> Result<()> {
+                    if let Ok(rc) = process.wait() {
+                        if !rc.success() {
+                            let mut info = out_file.meta.info.write().unwrap();
+                            match rc.code() {
+                                Some(code) => info.push(format!("rc: {}", code)),
+                                None => info.push("killed!".to_string()),
+                            }
+                            event_sender.send(Event::RefreshOverlay)?;
                         }
-                        event_sender.send(Event::RefreshOverlay)?;
                     }
+                    Ok(())
                 }
-                Ok(())
-            }
-        });
+            })
+            .unwrap();
         Ok((out_file, err_file))
     }
 

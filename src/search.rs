@@ -87,97 +87,100 @@ impl SearchInner {
             search_line_count: AtomicUsize::new(0),
             finished: AtomicBool::new(false),
         });
-        thread::spawn({
-            let search = search.clone();
-            let file = file.clone();
-            move || {
-                let mut matched = false;
-                loop {
-                    let loaded = file.loaded();
-                    let lines = file.lines();
-                    let search_line_count = search.search_line_count.load(Ordering::SeqCst);
-                    let search_limit = min(
-                        search_line_count + SEARCH_BATCH_SIZE,
-                        if loaded { lines } else { lines - 1 },
-                    );
-                    for line in search_line_count..search_limit {
-                        let count = file.with_line(line, |data| {
-                            // Strip trailing LF or CRLF if it is there.
-                            let len = trim_trailing_newline(&data[..]);
-                            let data = overstrike::convert_overstrike(&data[..len]);
-                            let data = ESCAPE_SEQUENCE.replace_all(&data[..], NoExpand(b""));
-                            regex.find_iter(&data[..]).count()
-                        });
-                        if count.unwrap_or(0) > 0 {
-                            let mut matching_lines = search.matching_lines.write().unwrap();
-                            matching_lines.insert(line);
-                            let mut matches = search.matches.write().unwrap();
-                            let first_match_index = matches.len();
-                            for i in 0..count.unwrap() {
-                                matches.push((line, i));
-                            }
-                            search.matching_line_count.fetch_add(1, Ordering::SeqCst);
-                            if !matched {
-                                if let Some(index) = match search.kind {
-                                    SearchKind::First => Some(first_match_index),
-                                    SearchKind::FirstAfter(offset) => {
-                                        if line >= offset {
-                                            Some(first_match_index)
-                                        } else {
-                                            None
+        thread::Builder::new()
+            .name(String::from("sp-search"))
+            .spawn({
+                let search = search.clone();
+                let file = file.clone();
+                move || {
+                    let mut matched = false;
+                    loop {
+                        let loaded = file.loaded();
+                        let lines = file.lines();
+                        let search_line_count = search.search_line_count.load(Ordering::SeqCst);
+                        let search_limit = min(
+                            search_line_count + SEARCH_BATCH_SIZE,
+                            if loaded { lines } else { lines - 1 },
+                        );
+                        for line in search_line_count..search_limit {
+                            let count = file.with_line(line, |data| {
+                                // Strip trailing LF or CRLF if it is there.
+                                let len = trim_trailing_newline(&data[..]);
+                                let data = overstrike::convert_overstrike(&data[..len]);
+                                let data = ESCAPE_SEQUENCE.replace_all(&data[..], NoExpand(b""));
+                                regex.find_iter(&data[..]).count()
+                            });
+                            if count.unwrap_or(0) > 0 {
+                                let mut matching_lines = search.matching_lines.write().unwrap();
+                                matching_lines.insert(line);
+                                let mut matches = search.matches.write().unwrap();
+                                let first_match_index = matches.len();
+                                for i in 0..count.unwrap() {
+                                    matches.push((line, i));
+                                }
+                                search.matching_line_count.fetch_add(1, Ordering::SeqCst);
+                                if !matched {
+                                    if let Some(index) = match search.kind {
+                                        SearchKind::First => Some(first_match_index),
+                                        SearchKind::FirstAfter(offset) => {
+                                            if line >= offset {
+                                                Some(first_match_index)
+                                            } else {
+                                                None
+                                            }
                                         }
-                                    }
-                                    SearchKind::FirstBefore(offset) => {
-                                        if line >= offset
-                                            && first_match_index > 0
-                                            && matches[first_match_index - 1].0 < offset
-                                        {
-                                            Some(first_match_index - 1)
-                                        } else {
-                                            None
+                                        SearchKind::FirstBefore(offset) => {
+                                            if line >= offset
+                                                && first_match_index > 0
+                                                && matches[first_match_index - 1].0 < offset
+                                            {
+                                                Some(first_match_index - 1)
+                                            } else {
+                                                None
+                                            }
                                         }
+                                    } {
+                                        *search.current_match.write().unwrap() = Some(index);
+                                        event_sender
+                                            .send(Event::SearchFirstMatch(file.index()))
+                                            .unwrap();
+                                        matched = true;
                                     }
-                                } {
-                                    *search.current_match.write().unwrap() = Some(index);
-                                    event_sender
-                                        .send(Event::SearchFirstMatch(file.index()))
-                                        .unwrap();
-                                    matched = true;
                                 }
                             }
                         }
+                        search
+                            .search_line_count
+                            .store(search_limit, Ordering::SeqCst);
+                        if loaded && search_limit == lines {
+                            // Searched the whole file.
+                            break;
+                        }
+                        if !loaded && search_limit >= lines - 1 {
+                            // Searched the whole file so far.  Wait for more data.
+                            thread::sleep(time::Duration::from_millis(100));
+                        }
                     }
-                    search
-                        .search_line_count
-                        .store(search_limit, Ordering::SeqCst);
-                    if loaded && search_limit == lines {
-                        // Searched the whole file.
-                        break;
+                    if !matched {
+                        let matches = search.matches.read().unwrap();
+                        if matches.len() > 0 {
+                            let index = match search.kind {
+                                SearchKind::First | SearchKind::FirstAfter(_) => 0,
+                                SearchKind::FirstBefore(_) => matches.len() - 1,
+                            };
+                            *search.current_match.write().unwrap() = Some(index);
+                            event_sender
+                                .send(Event::SearchFirstMatch(file.index()))
+                                .unwrap();
+                        }
                     }
-                    if !loaded && search_limit >= lines - 1 {
-                        // Searched the whole file so far.  Wait for more data.
-                        thread::sleep(time::Duration::from_millis(100));
-                    }
+                    search.finished.store(true, Ordering::SeqCst);
+                    event_sender
+                        .send(Event::SearchFinished(file.index()))
+                        .unwrap();
                 }
-                if !matched {
-                    let matches = search.matches.read().unwrap();
-                    if matches.len() > 0 {
-                        let index = match search.kind {
-                            SearchKind::First | SearchKind::FirstAfter(_) => 0,
-                            SearchKind::FirstBefore(_) => matches.len() - 1,
-                        };
-                        *search.current_match.write().unwrap() = Some(index);
-                        event_sender
-                            .send(Event::SearchFirstMatch(file.index()))
-                            .unwrap();
-                    }
-                }
-                search.finished.store(true, Ordering::SeqCst);
-                event_sender
-                    .send(Event::SearchFinished(file.index()))
-                    .unwrap();
-            }
-        });
+            })
+            .unwrap();
         Ok(search)
     }
 }
