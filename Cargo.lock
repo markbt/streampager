@@ -904,7 +904,7 @@ checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
 name = "streampager"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "anyhow",
  "bit-set",
