@@ -535,7 +535,6 @@ impl FileData {
 }
 
 /// A loaded file.
-#[derive(Clone)]
 pub(crate) struct LoadedFile {
     /// The data for the file.
     data: FileData,
@@ -543,14 +542,24 @@ pub(crate) struct LoadedFile {
     /// Metadata about the loading of the file.
     meta: Arc<FileMeta>,
 
-    /// Guard to stop loading the file when all references to it are dropped.
-    guard: Arc<FileGuard>,
+    /// Guard to stop loading the file when the original reference to it is dropped.
+    _guard: Option<FileGuard>,
+}
+
+impl Clone for LoadedFile {
+    fn clone(&self) -> LoadedFile {
+        LoadedFile {
+            data: self.data.clone(),
+            meta: self.meta.clone(),
+            _guard: None,
+        }
+    }
 }
 
 impl LoadedFile {
     fn new(data: FileData, meta: Arc<FileMeta>) -> Self {
-        let guard = Arc::new(FileGuard { meta: meta.clone() });
-        LoadedFile { data, meta, guard }
+        let _guard = Some(FileGuard { meta: meta.clone() });
+        LoadedFile { data, meta, _guard }
     }
 
     /// Load stream.
