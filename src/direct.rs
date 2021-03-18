@@ -255,19 +255,11 @@ impl StreamingLines {
             for line in lines {
                 let line = Line::new(0, line);
                 let height = line.height(terminal_width, WrappingMode::GraphemeBoundary);
-                for row in 0..height {
-                    line.render_wrapped(
-                        &mut changes,
-                        row,
-                        terminal_width,
-                        WrappingMode::GraphemeBoundary,
-                        None,
-                    )?;
-                    changes.push(Change::CursorPosition {
-                        x: Position::Absolute(0),
-                        y: Position::Relative(1),
-                    });
-                }
+                line.render(&mut changes, 0, terminal_width * height, None)?;
+                changes.push(Change::CursorPosition {
+                    x: Position::Absolute(0),
+                    y: Position::Relative(1),
+                });
                 row_count += height;
             }
             Ok(row_count)
