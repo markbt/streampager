@@ -282,7 +282,11 @@ impl Screen {
         #[derive(Copy, Clone, Debug)]
         enum RowContent {
             Empty,
-            FileLinePortion(usize, usize),
+            FileLinePortions {
+                line: usize,
+                first_portion: usize,
+                rows: usize,
+            },
             Blank,
             Error,
             Prompt,
@@ -577,8 +581,11 @@ impl Screen {
                         file_view_height - row,
                     );
                     for offset in 0..visible_line_height {
-                        row_contents[row + offset] =
-                            RowContent::FileLinePortion(file_line, top_portion + offset);
+                        row_contents[row + offset] = RowContent::FileLinePortions {
+                            line: file_line,
+                            first_portion: top_portion + offset,
+                            rows: 1,
+                        };
                     }
                     file_line_rows.push((row, row + visible_line_height));
                     row += visible_line_height;
@@ -687,17 +694,60 @@ impl Screen {
             }
         }
 
+        if self.wrapping_mode == WrappingMode::GraphemeBoundary && !self.line_numbers {
+            // In wrapped mode with line numbers off, render full lines at once
+            // so that the terminal can handle wrapped lines properly.
+            let mut first_row: Option<(usize, &mut RowContent)> = None;
+            for (row, row_content) in row_contents.iter_mut().enumerate() {
+                match row_content {
+                    RowContent::FileLinePortions {
+                        line: this_line,
+                        first_portion: this_portion,
+                        rows: _,
+                    } => {
+                        match first_row {
+                            Some((
+                                first_row,
+                                &mut RowContent::FileLinePortions {
+                                    line,
+                                    first_portion,
+                                    ref mut rows,
+                                },
+                            )) if *this_line == line && *this_portion == first_portion + *rows => {
+                                *rows += 1;
+                                *row_content = RowContent::Empty;
+                                if pending_refresh.contains(row) {
+                                    pending_refresh.add_range(first_row, first_row + 1);
+                                }
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        first_row = Some((row, row_content));
+                    }
+                    _ => {
+                        first_row = None;
+                    }
+                }
+            }
+        }
+
         // Render pending rows
         for (row, row_content) in row_contents.into_iter().enumerate() {
             if pending_refresh.contains(row) {
                 match row_content {
                     RowContent::Empty => {}
-                    RowContent::FileLinePortion(line, portion) => {
+                    RowContent::FileLinePortions {
+                        line,
+                        first_portion,
+                        rows,
+                    } => {
                         self.render_file_line(
                             &mut changes,
                             row,
                             line,
-                            portion,
+                            first_portion,
+                            rows,
                             render.left,
                             render.width,
                         )?;
@@ -772,7 +822,8 @@ impl Screen {
         changes: &mut Vec<Change>,
         row: usize,
         line_index: usize,
-        portion: usize,
+        first_portion: usize,
+        rows: usize,
         left: usize,
         width: usize,
     ) -> Result<(), Error> {
@@ -813,7 +864,7 @@ impl Screen {
                             .set_background(AnsiColor::Silver)
                             .clone(),
                     ));
-                    if portion == 0 {
+                    if first_portion == 0 {
                         changes.push(Change::Text(format!(" {:>1$} ", line_index + 1, lw)));
                     } else {
                         changes.push(Change::Text(" ".repeat(lw + 2)));
@@ -827,7 +878,8 @@ impl Screen {
             } else {
                 line.render_wrapped(
                     changes,
-                    portion,
+                    first_portion,
+                    rows,
                     end - start,
                     self.wrapping_mode,
                     match_index,
@@ -871,7 +923,7 @@ impl Screen {
             changes.push(Change::AllAttributes(CellAttributes::default()));
             if let Some(line) = error_file.with_line(line_index, |line| Line::new(line_index, line))
             {
-                line.render_wrapped(changes, portion, width, WrappingMode::WordBoundary, None)?;
+                line.render_wrapped(changes, portion, 1, width, WrappingMode::WordBoundary, None)?;
             } else {
                 changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
             }

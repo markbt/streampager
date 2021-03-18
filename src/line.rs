@@ -731,20 +731,30 @@ impl Line {
     pub(crate) fn render_wrapped(
         &self,
         changes: &mut Vec<Change>,
-        row: usize,
+        first_row: usize,
+        row_count: usize,
         width: usize,
         wrapping: WrappingMode,
         search_index: Option<usize>,
     ) -> Result<(), std::io::Error> {
         let (start, end) = {
+            fn wrap_bounds_for_rows(
+                rows: &WrapCacheItem,
+                first_row: usize,
+                row_count: usize,
+            ) -> (usize, usize) {
+                let end = rows
+                    .get(first_row + row_count - 1)
+                    .map_or_else(|| rows.last().map_or(0, |r| r.1), |r| r.1);
+                let start = rows.get(first_row).map_or(end, |r| r.0);
+                (start, end)
+            }
             let mut wraps = self.wraps.lock().unwrap();
-            if let Some(rows) = wraps.get_mut(&(width, wrapping)) {
-                let (start, end) = rows.get(row).unwrap_or(&(0, 0));
-                (*start, *end)
+            if let Some(rows) = wraps.get(&(width, wrapping)) {
+                wrap_bounds_for_rows(rows, first_row, row_count)
             } else {
                 let rows = self.make_wrap(width, wrapping);
-                let (start, end) = rows.get(row).unwrap_or(&(0, 0));
-                let (start, end) = (*start, *end);
+                let (start, end) = wrap_bounds_for_rows(&rows, first_row, row_count);
                 wraps.put((width, wrapping), rows);
                 (start, end)
             }
@@ -754,7 +764,7 @@ impl Line {
         for span in self.spans.iter() {
             position = span.render(changes, &mut attr_state, start, end, position, search_index)?;
         }
-        if end - start < width {
+        if end - start < width * row_count {
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
         changes.push(Change::AllAttributes(CellAttributes::default()));
