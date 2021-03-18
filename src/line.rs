@@ -719,11 +719,11 @@ impl Line {
                         .clone(),
                 ));
                 changes.push(RIGHT_ARROW.into());
-                changes.push(Change::AllAttributes(CellAttributes::default()));
             }
-            Ordering::Equal => changes.push(Change::AllAttributes(CellAttributes::default())),
             Ordering::Less => changes.push(Change::ClearToEndOfLine(ColorAttribute::default())),
+            Ordering::Equal => {}
         }
+        changes.push(Change::AllAttributes(CellAttributes::default()));
         Ok(())
     }
 
@@ -757,6 +757,7 @@ impl Line {
         if end - start < width {
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
+        changes.push(Change::AllAttributes(CellAttributes::default()));
         Ok(())
     }
 
