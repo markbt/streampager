@@ -1,6 +1,6 @@
 [package]
 name = "streampager"
-version = "0.9.3"
+version = "0.9.4"
 authors = ["Mark Juggurnauth-Thomas <markbt@efaref.net>"]
 edition = "2018"
 description = "streampager is a pager for command output or large files"
