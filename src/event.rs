@@ -67,7 +67,11 @@ impl EventSender {
         Ok(())
     }
     pub(crate) fn send_unique(&self, event: Event, unique: &UniqueInstance) -> Result<(), Error> {
-        if !unique.0.compare_and_swap(false, true, Ordering::SeqCst) {
+        if unique
+            .0
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
             self.0.send(Envelope::Unique(event, unique.clone()))?;
             self.1.wake()?;
         }
