@@ -1,5 +1,8 @@
 # streampager (sp)
 
+[![Documentation](https://docs.rs/streampager/badge.svg)](https://docs.rs/streampager)
+![Build Status](https://github.com/markbt/streampager/workflows/build/badge.svg)
+
 A pager for command output or large files.
 
 *streampager* is a library that implements a general-purpose pager for browsing
