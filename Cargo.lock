@@ -1057,9 +1057,9 @@ dependencies = [
 
 [[package]]
 name = "termwiz"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbee5996e6e466a0113d5395436353e20e24932b0a215cfdf6edfbda77eaf50d"
+checksum = "12b348dd979d43d0082d232b0e7ff03b95a3eca71a96b230aba855ad86273c33"
 dependencies = [
  "anyhow",
  "base64",
@@ -1175,9 +1175,9 @@ checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
 
 [[package]]
 name = "vtparse"
-version = "0.4.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9e4a5b7598a0913469560c36153da5be4729cc8768f8846999f9225104a93c8"
+checksum = "78a0bebf506b5405df1bc773d1b7bfa5d2fb11011b8c95b7d0a6dfd0f8f37142"
 dependencies = [
  "utf8parse",
 ]
