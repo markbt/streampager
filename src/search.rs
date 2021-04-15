@@ -204,12 +204,7 @@ impl Search {
     }
 
     /// Renders the search overlay line.
-    pub(crate) fn render(
-        &mut self,
-        changes: &mut Vec<Change>,
-        line: usize,
-        width: usize,
-    ) -> Result<(), Error> {
+    pub(crate) fn render(&mut self, changes: &mut Vec<Change>, line: usize, width: usize) {
         let mut width = width;
         changes.push(Change::CursorPosition {
             x: Position::Absolute(0),
@@ -224,7 +219,7 @@ impl Search {
         if width < 8 {
             // The screen is too small to write anything, just write a blank bar.
             changes.push(Change::ClearToEndOfLine(AnsiColor::Silver.into()));
-            return Ok(());
+            return;
         }
         changes.push(Change::Text("  ".into()));
         width -= 2;
@@ -267,8 +262,6 @@ impl Search {
             changes.push(Change::Text(match_info.into()));
             changes.push(Change::ClearToEndOfLine(AnsiColor::Silver.into()));
         }
-
-        Ok(())
     }
 
     /// Returns the line number and match index of the current match.

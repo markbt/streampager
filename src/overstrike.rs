@@ -178,7 +178,7 @@ pub(crate) fn convert_overstrike(input: &[u8]) -> Cow<'_, [u8]> {
                         data.extend_from_slice(&after_valid[..len]);
                         input = &after_valid[len..];
                     } else {
-                        data.extend_from_slice(&after_valid[..]);
+                        data.extend_from_slice(after_valid);
                         break;
                     }
                 }

@@ -142,7 +142,7 @@ impl FileData {
         mut input: impl Read + Send + 'static,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<FileData> {
+    ) -> FileData {
         let buffers = Arc::new(RwLock::new(Vec::new()));
         thread::Builder::new()
             .name(format!("sp-stream-{}", meta.index))
@@ -206,7 +206,7 @@ impl FileData {
                 }
             })
             .unwrap();
-        Ok(FileData::Streamed { buffers })
+        FileData::Streamed { buffers }
     }
 
     /// Create a new file from disk.
@@ -467,7 +467,7 @@ impl FileData {
         data: impl Into<Cow<'static, [u8]>>,
         meta: Arc<FileMeta>,
         event_sender: EventSender,
-    ) -> Result<FileData> {
+    ) -> FileData {
         let data = Arc::new(data.into());
         thread::Builder::new()
             .name(format!("sp-static-{}", meta.index))
@@ -499,7 +499,7 @@ impl FileData {
                 }
             })
             .unwrap();
-        Ok(FileData::Static { data })
+        FileData::Static { data }
     }
 
     /// Runs the `call` function, passing it a slice of the data from `start` to `end`.
@@ -523,7 +523,7 @@ impl FileData {
                     let mut v = Vec::with_capacity(end - start);
                     v.extend_from_slice(&buffers[start_buffer].read()[start % BUFFER_SIZE..]);
                     for b in start_buffer + 1..end_buffer {
-                        v.extend_from_slice(&buffers[b].read()[..]);
+                        v.extend_from_slice(buffers[b].read());
                     }
                     v.extend_from_slice(&buffers[end_buffer].read()[..=(end - 1) % BUFFER_SIZE]);
                     call(Cow::Owned(v))
@@ -589,10 +589,10 @@ impl LoadedFile {
         stream: impl Read + Send + 'static,
         title: &str,
         event_sender: EventSender,
-    ) -> Result<LoadedFile> {
+    ) -> LoadedFile {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
-        let data = FileData::new_streamed(stream, meta.clone(), event_sender)?;
-        Ok(LoadedFile::new(data, meta))
+        let data = FileData::new_streamed(stream, meta.clone(), event_sender);
+        LoadedFile::new(data, meta)
     }
 
     pub(crate) fn new_file(
@@ -608,7 +608,7 @@ impl LoadedFile {
         // around and load parts of the file at will, so treat it as a stream.
         let data = match file.seek(SeekFrom::Current(0)) {
             Ok(_) => FileData::new_file(filename, meta.clone(), event_sender)?,
-            Err(_) => FileData::new_streamed(file, meta.clone(), event_sender)?,
+            Err(_) => FileData::new_streamed(file, meta.clone(), event_sender),
         };
         Ok(LoadedFile::new(data, meta))
     }
@@ -628,7 +628,7 @@ impl LoadedFile {
         // it.
         let data = match file.seek(SeekFrom::Current(0)) {
             Ok(_) => FileData::new_mapped(file, meta.clone(), event_sender)?,
-            Err(_) => FileData::new_streamed(file, meta.clone(), event_sender)?,
+            Err(_) => FileData::new_streamed(file, meta.clone(), event_sender),
         };
         Ok(LoadedFile::new(data, meta))
     }
@@ -655,8 +655,8 @@ impl LoadedFile {
             .map_err(|err| Error::from(err).with_command(command))?;
         let out = process.stdout.take().unwrap();
         let err = process.stderr.take().unwrap();
-        let out_file = LoadedFile::new_streamed(index, out, &title, event_sender.clone())?;
-        let err_file = LoadedFile::new_streamed(index + 1, err, &title_err, event_sender.clone())?;
+        let out_file = LoadedFile::new_streamed(index, out, &title, event_sender.clone());
+        let err_file = LoadedFile::new_streamed(index + 1, err, &title_err, event_sender.clone());
         thread::Builder::new()
             .name(format!("sp-cmd-{}", index))
             .spawn({
@@ -685,10 +685,10 @@ impl LoadedFile {
         title: &str,
         data: impl Into<Cow<'static, [u8]>>,
         event_sender: EventSender,
-    ) -> Result<LoadedFile> {
+    ) -> LoadedFile {
         let meta = Arc::new(FileMeta::new(index, title.to_string()));
-        let data = FileData::new_static(data, meta.clone(), event_sender)?;
-        Ok(LoadedFile::new(data, meta))
+        let data = FileData::new_static(data, meta.clone(), event_sender);
+        LoadedFile::new(data, meta)
     }
 }
 

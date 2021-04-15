@@ -257,17 +257,19 @@ impl Screen {
 
     /// Renders the part of the screen that has changed.
     pub(crate) fn render(&mut self, caps: &Capabilities) -> Result<Vec<Change>, Error> {
-        let mut changes = Vec::new();
-
-        // Hide the cursor while we render things.
-        changes.push(Change::CursorVisibility(CursorVisibility::Hidden));
+        let mut changes = vec![
+            // Hide the cursor while we render things.
+            Change::CursorVisibility(CursorVisibility::Hidden),
+        ];
 
         // Set up the render state.
-        let mut render: RenderState = RenderState::default();
-        render.width = self.width;
-        render.height = self.height;
-        render.file_lines = self.file.lines();
-        render.error_file_lines = self.error_file.as_ref().map(|f| f.lines()).unwrap_or(0);
+        let mut render = RenderState {
+            width: self.width,
+            height: self.height,
+            file_lines: self.file.lines(),
+            error_file_lines: self.error_file.as_ref().map(|f| f.lines()).unwrap_or(0),
+            ..Default::default()
+        };
         if let Some(search) = self.search.as_ref() {
             render.searched_lines = search.searched_lines();
         }
@@ -294,7 +296,7 @@ impl Screen {
             Ruler,
             ErrorFileLinePortion(usize, usize),
             ProgressLine(usize),
-        };
+        }
 
         let mut row_contents = vec![RowContent::Empty; render.height];
 
@@ -445,7 +447,7 @@ impl Screen {
             None,
             Up,
             Down,
-        };
+        }
 
         // Perform pending relative scroll
         let mut scroll_direction = Direction::None;
@@ -756,7 +758,7 @@ impl Screen {
                         self.render_blank_line(&mut changes, row);
                     }
                     RowContent::Error => {
-                        self.render_error(&mut changes, row, render.width)?;
+                        self.render_error(&mut changes, row, render.width);
                     }
                     RowContent::Prompt => {
                         self.prompt
@@ -766,7 +768,7 @@ impl Screen {
                     }
                     RowContent::Search => {
                         if let Some(search) = self.search.as_mut() {
-                            search.render(&mut changes, row, render.width)?;
+                            search.render(&mut changes, row, render.width);
                         }
                     }
                     RowContent::Ruler => {
@@ -874,7 +876,7 @@ impl Screen {
                 }
             }
             if self.wrapping_mode == WrappingMode::Unwrapped {
-                line.render(changes, start, end, match_index)?;
+                line.render(changes, start, end, match_index);
             } else {
                 line.render_wrapped(
                     changes,
@@ -883,7 +885,7 @@ impl Screen {
                     end - start,
                     self.wrapping_mode,
                     match_index,
-                )?;
+                );
             }
         } else {
             self.render_blank_line(changes, row);
@@ -923,7 +925,7 @@ impl Screen {
             changes.push(Change::AllAttributes(CellAttributes::default()));
             if let Some(line) = error_file.with_line(line_index, |line| Line::new(line_index, line))
             {
-                line.render_wrapped(changes, portion, 1, width, WrappingMode::WordBoundary, None)?;
+                line.render_wrapped(changes, portion, 1, width, WrappingMode::WordBoundary, None);
             } else {
                 changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
             }
@@ -945,7 +947,7 @@ impl Screen {
             });
             changes.push(Change::AllAttributes(CellAttributes::default()));
             if let Some(line) = progress.with_line(line_index, |line| Line::new(line_index, line)) {
-                line.render(changes, 0, width, None)?;
+                line.render(changes, 0, width, None);
             } else {
                 changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
             }
@@ -954,12 +956,7 @@ impl Screen {
     }
 
     /// Renders the error message at the bottom of the screen.
-    fn render_error(
-        &mut self,
-        changes: &mut Vec<Change>,
-        row: usize,
-        _width: usize,
-    ) -> Result<(), Error> {
+    fn render_error(&mut self, changes: &mut Vec<Change>, row: usize, _width: usize) {
         if let Some(error) = self.error.as_ref() {
             changes.push(Change::CursorPosition {
                 x: Position::Absolute(0),
@@ -976,7 +973,6 @@ impl Screen {
             changes.push(Change::AllAttributes(CellAttributes::default()));
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
-        Ok(())
     }
 
     /// Refreshes the ruler on the next render.
@@ -1225,7 +1221,7 @@ impl Screen {
     }
 
     /// Dispatch an animation timeout, updating for the next animation frame.
-    pub(crate) fn dispatch_animation(&mut self) -> Result<Option<DisplayAction>, Error> {
+    pub(crate) fn dispatch_animation(&mut self) -> Option<DisplayAction> {
         if !self.file.loaded() {
             self.refresh_ruler();
         }
@@ -1243,8 +1239,8 @@ impl Screen {
             }
         }
         match &self.pending_refresh {
-            Refresh::None => Ok(None),
-            _ => Ok(Some(DisplayAction::Render)),
+            Refresh::None => None,
+            _ => Some(DisplayAction::Render),
         }
     }
 
@@ -1275,6 +1271,7 @@ impl Screen {
     }
 
     /// Called when a search completes.
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn search_finished(&mut self) -> Option<DisplayAction> {
         self.refresh_matched_lines();
         self.refresh_overlay();

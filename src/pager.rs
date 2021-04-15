@@ -127,7 +127,7 @@ impl Pager {
     ) -> Result<FileIndex> {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let file = LoadedFile::new_streamed(index, stream, title, event_sender)?;
+        let file = LoadedFile::new_streamed(index, stream, title, event_sender);
         self.files.push(file.into());
         Ok(index)
     }
@@ -140,7 +140,7 @@ impl Pager {
     ) -> Result<FileIndex> {
         let index = self.files.len();
         let event_sender = self.events.sender();
-        let file = LoadedFile::new_streamed(index, stream, title, event_sender)?;
+        let file = LoadedFile::new_streamed(index, stream, title, event_sender);
         if let Some(out_file) = self.files.last() {
             self.error_files
                 .insert(out_file.index(), file.clone().into());

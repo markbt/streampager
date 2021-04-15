@@ -38,6 +38,9 @@ type WrapCacheIndex = (usize, WrappingMode);
 /// Line wraps in the cache are represented by a list of start and end offsets.
 type WrapCacheItem = Vec<(usize, usize)>;
 
+/// Line wraps in the cache are represented by a list of start and end offsets.
+type WrapCacheItemRef<'a> = &'a [(usize, usize)];
+
 /// Represents a single line in a displayed file.
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
@@ -137,7 +140,7 @@ impl AttributeState {
     }
 
     /// Switch to the given style.  The correct escape color sequences will be emitted.
-    fn style(&mut self, style: OutputStyle) -> Result<Option<Change>, std::io::Error> {
+    fn style(&mut self, style: OutputStyle) -> Option<Change> {
         if self.style != style || self.changed {
             let attrs = match style {
                 OutputStyle::File => self.attrs.clone(),
@@ -159,9 +162,9 @@ impl AttributeState {
             };
             self.style = style;
             self.changed = false;
-            Ok(Some(Change::AllAttributes(attrs)))
+            Some(Change::AllAttributes(attrs))
         } else {
-            Ok(None)
+            None
         }
     }
 }
@@ -188,11 +191,11 @@ enum Span {
     /// Data that should be ignored.
     Ignore(SmallVec<[u8; 20]>),
     /// A tab control character.
-    TAB,
+    Tab,
     /// A terminating CRLF sequence.
-    CRLF,
+    CrLf,
     /// A terminating LF sequence.
-    LF,
+    Lf,
 }
 
 /// Produce `Change`s to output some text in the given style at the given
@@ -207,10 +210,10 @@ fn write_truncated(
     start: usize,
     end: usize,
     position: usize,
-) -> Result<usize, std::io::Error> {
+) -> usize {
     let text_width = text.width();
     if position + text_width > start && position < end {
-        if let Some(change) = attr_state.style(style)? {
+        if let Some(change) = attr_state.style(style) {
             changes.push(change);
         }
         let start = start.saturating_sub(position);
@@ -221,7 +224,7 @@ fn write_truncated(
             end - start,
         )));
     }
-    Ok(position + text_width)
+    position + text_width
 }
 
 struct SplitWords<'t> {
@@ -276,7 +279,7 @@ impl Span {
         end: usize,
         mut position: usize,
         search_index: Option<usize>,
-    ) -> Result<usize, std::io::Error> {
+    ) -> usize {
         match *self {
             Span::Text(ref t) => {
                 let text = if attr_state.line_drawing {
@@ -292,7 +295,7 @@ impl Span {
                     start,
                     end,
                     position,
-                )?;
+                );
             }
             Span::Match(ref t, ref match_index) => {
                 let style = if search_index == Some(*match_index) {
@@ -313,9 +316,9 @@ impl Span {
                     start,
                     end,
                     position,
-                )?;
+                );
             }
-            Span::TAB => {
+            Span::Tab => {
                 let tabchars = 8 - position % 8;
                 position = write_truncated(
                     changes,
@@ -325,7 +328,7 @@ impl Span {
                     start,
                     end,
                     position,
-                )?;
+                );
             }
             Span::Control(c) | Span::Invalid(c) => {
                 position = write_truncated(
@@ -336,7 +339,7 @@ impl Span {
                     start,
                     end,
                     position,
-                )?;
+                );
             }
             Span::Unprintable(ref grapheme) => {
                 for c in grapheme.chars() {
@@ -348,7 +351,7 @@ impl Span {
                         start,
                         end,
                         position,
-                    )?;
+                    );
                 }
             }
             Span::SgrSequence(ref s) => attr_state.apply_sgr_sequence(s),
@@ -356,7 +359,7 @@ impl Span {
             Span::LineDrawing(e) => attr_state.line_drawing = e,
             _ => {}
         }
-        Ok(position)
+        position
     }
 
     fn split(
@@ -420,7 +423,7 @@ impl Span {
                 }
                 (start, position)
             }
-            Span::TAB => {
+            Span::Tab => {
                 let tabchars = 8 - position % 8;
                 let end = position + tabchars;
                 if end - start <= width {
@@ -462,7 +465,7 @@ impl Span {
 /// Parse data into an array of Spans.
 fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
     let mut spans = Vec::new();
-    let mut input = &data[..];
+    let mut input = data;
 
     fn parse_unicode_span(data: &str, spans: &mut Vec<Span>, match_index: Option<usize>) {
         let mut text_start = None;
@@ -530,16 +533,16 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
             }
 
             if grapheme == "\r\n" {
-                span = Some(Span::CRLF);
+                span = Some(Span::CrLf);
                 skip_to = Some(index + 2);
             }
 
             if grapheme == "\n" {
-                span = Some(Span::LF);
+                span = Some(Span::Lf);
             }
 
             if grapheme == "\t" {
-                span = Some(Span::TAB);
+                span = Some(Span::Tab);
             }
 
             if span.is_none() && grapheme.len() == 1 {
@@ -600,7 +603,7 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
                     }
                     input = &after_valid[len..];
                 } else {
-                    for byte in &after_valid[..] {
+                    for byte in after_valid {
                         spans.push(Span::Invalid(*byte));
                     }
                     break;
@@ -613,17 +616,15 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
 
 impl Line {
     pub(crate) fn new(_index: usize, data: impl AsRef<[u8]>) -> Line {
-        let data = data.as_ref();
-        let data = overstrike::convert_overstrike(&data[..]);
+        let data = overstrike::convert_overstrike(data.as_ref());
         let spans = parse_spans(&data[..], None).into_boxed_slice();
         let wraps = Arc::new(Mutex::new(LruCache::new(WRAPS_CACHE_SIZE)));
         Line { spans, wraps }
     }
 
     pub(crate) fn new_search(_index: usize, data: impl AsRef<[u8]>, regex: &Regex) -> Line {
-        let data = data.as_ref();
-        let data = overstrike::convert_overstrike(&data[..]);
-        let len = trim_trailing_newline(&data[..]);
+        let data = overstrike::convert_overstrike(data.as_ref());
+        let len = trim_trailing_newline(data.as_ref());
         let mut spans = Vec::new();
         let mut start = 0;
         let (data_without_escapes, convert_offset) = if ESCAPE_SEQUENCE.is_match(&data[..len]) {
@@ -680,7 +681,7 @@ impl Line {
         start: usize,
         end: usize,
         search_index: Option<usize>,
-    ) -> Result<(), std::io::Error> {
+    ) {
         let mut start = start;
         let mut attr_state = AttributeState::new();
         let mut position = 0;
@@ -696,7 +697,7 @@ impl Line {
             start += 1;
         }
         for span in self.spans.iter() {
-            position = span.render(changes, &mut attr_state, start, end, position, search_index)?;
+            position = span.render(changes, &mut attr_state, start, end, position, search_index);
         }
         match position.cmp(&end) {
             Ordering::Greater => {
@@ -724,7 +725,6 @@ impl Line {
             Ordering::Equal => {}
         }
         changes.push(Change::AllAttributes(CellAttributes::default()));
-        Ok(())
     }
 
     /// Produce the `Change`s needed to render a row of the wrapped line on a terminal.
@@ -736,10 +736,10 @@ impl Line {
         width: usize,
         wrapping: WrappingMode,
         search_index: Option<usize>,
-    ) -> Result<(), std::io::Error> {
+    ) {
         let (start, end) = {
             fn wrap_bounds_for_rows(
-                rows: &WrapCacheItem,
+                rows: WrapCacheItemRef<'_>,
                 first_row: usize,
                 row_count: usize,
             ) -> (usize, usize) {
@@ -762,13 +762,12 @@ impl Line {
         let mut attr_state = AttributeState::new();
         let mut position = 0;
         for span in self.spans.iter() {
-            position = span.render(changes, &mut attr_state, start, end, position, search_index)?;
+            position = span.render(changes, &mut attr_state, start, end, position, search_index);
         }
         if end - start < width * row_count {
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
         changes.push(Change::AllAttributes(CellAttributes::default()));
-        Ok(())
     }
 
     /// Returns the start and end pairs for each row of the line if wrapped.

@@ -253,7 +253,7 @@ pub(crate) fn start(
             screen.maybe_load_more();
 
             match event {
-                None => screen.dispatch_animation()?,
+                None => screen.dispatch_animation(),
                 Some(Event::Render) => {
                     term.render(&screen.render(&caps)?)
                         .map_err(Error::Termwiz)?;
@@ -284,7 +284,7 @@ pub(crate) fn start(
                 Some(Event::Input(InputEvent::Key(key))) => {
                     let width = screen.width();
                     if let Some(prompt) = screen.prompt() {
-                        prompt.dispatch_key(key, width)?
+                        prompt.dispatch_key(key, width)
                     } else {
                         screen.dispatch_key(key, &event_sender)?
                     }
@@ -297,7 +297,7 @@ pub(crate) fn start(
                             // Assume the user wanted to search for what they're pasting.
                             command::search(SearchKind::First, event_sender.clone())
                         })
-                        .paste(text, width)?
+                        .paste(text, width)
                 }
                 Some(Event::Loaded(index)) if screens.is_current_index(index) => {
                     Some(DisplayAction::Refresh)
@@ -373,7 +373,7 @@ pub(crate) fn start(
                             "HELP",
                             help_text(screen.keymap())?.into_bytes(),
                             event_sender.clone(),
-                        )?
+                        )
                         .into(),
                         config.clone(),
                     )?;

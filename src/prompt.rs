@@ -378,11 +378,7 @@ impl Prompt {
     }
 
     /// Dispatch a key press to the prompt.
-    pub(crate) fn dispatch_key(
-        &mut self,
-        key: KeyEvent,
-        width: usize,
-    ) -> Result<Option<DisplayAction>, Error> {
+    pub(crate) fn dispatch_key(&mut self, key: KeyEvent, width: usize) -> Option<DisplayAction> {
         use termwiz::input::{KeyCode::*, Modifiers};
         const CTRL: Modifiers = Modifiers::CTRL;
         const NONE: Modifiers = Modifiers::NONE;
@@ -394,23 +390,21 @@ impl Prompt {
                 let _ = self.history.save();
                 let mut run = self.run.take();
                 let value: String = self.state().value[..].iter().collect();
-                return Ok(Some(DisplayAction::Run(Box::new(
-                    move |screen: &mut Screen| {
-                        screen.clear_prompt();
-                        if let Some(ref mut run) = run {
-                            run(screen, &value)
-                        } else {
-                            Ok(Some(DisplayAction::Render))
-                        }
-                    },
-                ))));
+                return Some(DisplayAction::Run(Box::new(move |screen: &mut Screen| {
+                    screen.clear_prompt();
+                    if let Some(ref mut run) = run {
+                        run(screen, &value)
+                    } else {
+                        Ok(Some(DisplayAction::Render))
+                    }
+                })));
             }
             (NONE, Escape) => {
                 // Cancel.
-                return Ok(Some(DisplayAction::Run(Box::new(|screen: &mut Screen| {
+                return Some(DisplayAction::Run(Box::new(|screen: &mut Screen| {
                     screen.clear_prompt();
                     Ok(Some(DisplayAction::Render))
-                }))));
+                })));
             }
             (NONE, Char(c)) => self.state_mut().insert_char(c, value_width),
             (NONE, Backspace) | (CTRL, Char('H')) => self.state_mut().delete_prev_char(),
@@ -428,22 +422,18 @@ impl Prompt {
             (CTRL, Char('T')) => self.state_mut().transpose_chars(),
             (NONE, UpArrow) => self.history.previous(),
             (NONE, DownArrow) => self.history.next(),
-            _ => return Ok(None),
+            _ => return None,
         };
         self.state_mut().clamp_offset(value_width);
-        Ok(action)
+        action
     }
 
     /// Paste some text into the prompt.
-    pub(crate) fn paste(
-        &mut self,
-        text: &str,
-        width: usize,
-    ) -> Result<Option<DisplayAction>, Error> {
+    pub(crate) fn paste(&mut self, text: &str, width: usize) -> Option<DisplayAction> {
         let value_width = width - self.prompt.width() - 4;
         let action = self.state_mut().insert_str(text);
         self.state_mut().clamp_offset(value_width);
-        Ok(action)
+        action
     }
 }
 
