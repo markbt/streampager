@@ -52,8 +52,11 @@ impl Capabilities {
 
 /// An action that affects the display.
 pub(crate) enum DisplayAction {
+    /// Do nothing.
+    None,
+
     /// Run a function.  The function may return a new action to run next.
-    Run(Box<dyn FnMut(&mut Screen) -> Result<Option<DisplayAction>, Error>>),
+    Run(Box<dyn FnMut(&mut Screen) -> Result<DisplayAction, Error>>),
 
     /// Change the terminal.
     Change(Change),
@@ -257,14 +260,14 @@ pub(crate) fn start(
                 Some(Event::Render) => {
                     term.render(&screen.render(&caps)?)
                         .map_err(Error::Termwiz)?;
-                    None
+                    DisplayAction::None
                 }
                 Some(Event::Input(InputEvent::Resized { .. })) => {
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     term.render(&screen.render(&caps)?)
                         .map_err(Error::Termwiz)?;
-                    None
+                    DisplayAction::None
                 }
                 Some(Event::Refresh) => {
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
@@ -272,13 +275,13 @@ pub(crate) fn start(
                     screen.refresh();
                     term.render(&screen.render(&caps)?)
                         .map_err(Error::Termwiz)?;
-                    None
+                    DisplayAction::None
                 }
                 Some(Event::Progress) => {
                     screen.refresh_progress();
                     term.render(&screen.render(&caps)?)
                         .map_err(Error::Termwiz)?;
-                    None
+                    DisplayAction::None
                 }
                 Some(Event::Action(action)) => screen.dispatch_action(action, &event_sender)?,
                 Some(Event::Input(InputEvent::Key(key))) => {
@@ -300,34 +303,43 @@ pub(crate) fn start(
                         .paste(text, width)
                 }
                 Some(Event::Loaded(index)) if screens.is_current_index(index) => {
-                    Some(DisplayAction::Refresh)
+                    DisplayAction::Refresh
                 }
                 Some(Event::Appending(index)) if screens.is_current_index(index) => {
-                    Some(DisplayAction::Refresh)
+                    DisplayAction::Refresh
                 }
                 Some(Event::Reloading(index)) => {
                     if let Some(screen) = screens.get(index) {
                         screen.flush_line_caches();
                     }
                     if screens.is_current_index(index) {
-                        Some(DisplayAction::Refresh)
+                        DisplayAction::Refresh
                     } else {
-                        None
+                        DisplayAction::None
                     }
                 }
-                Some(Event::SearchFirstMatch(index)) => screens
-                    .get(index)
-                    .and_then(|screen| screen.search_first_match()),
-                Some(Event::SearchFinished(index)) => screens
-                    .get(index)
-                    .and_then(|screen| screen.search_finished()),
-                _ => None,
+                Some(Event::SearchFirstMatch(index)) => {
+                    if let Some(screen) = screens.get(index) {
+                        screen.search_first_match()
+                    } else {
+                        DisplayAction::None
+                    }
+                }
+                Some(Event::SearchFinished(index)) => {
+                    if let Some(screen) = screens.get(index) {
+                        screen.search_finished()
+                    } else {
+                        DisplayAction::None
+                    }
+                }
+                _ => DisplayAction::None,
             }
         };
 
         // Process the action.  We may get new actions in return from the action.
-        while let Some(current_action) = action.take() {
-            match current_action {
+        loop {
+            match std::mem::replace(&mut action, DisplayAction::None) {
+                DisplayAction::None => break,
                 DisplayAction::Run(mut f) => action = f(screens.current())?,
                 DisplayAction::Change(c) => {
                     term.render(&[c]).map_err(Error::Termwiz)?;

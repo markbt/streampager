@@ -1114,21 +1114,21 @@ impl Screen {
         &mut self,
         action: Action,
         event_sender: &EventSender,
-    ) -> Result<Option<DisplayAction>, Error> {
+    ) -> Result<DisplayAction, Error> {
         use Action::*;
         match action {
-            Quit => return Ok(Some(DisplayAction::Quit)),
-            Refresh => return Ok(Some(DisplayAction::Refresh)),
-            Help => return Ok(Some(DisplayAction::ShowHelp)),
+            Quit => return Ok(DisplayAction::Quit),
+            Refresh => return Ok(DisplayAction::Refresh),
+            Help => return Ok(DisplayAction::ShowHelp),
             Cancel => {
                 self.error_file = None;
                 self.set_search(None);
                 self.error = None;
                 self.refresh();
-                return Ok(Some(DisplayAction::ClearOverlay));
+                return Ok(DisplayAction::ClearOverlay);
             }
-            PreviousFile => return Ok(Some(DisplayAction::PreviousFile)),
-            NextFile => return Ok(Some(DisplayAction::NextFile)),
+            PreviousFile => return Ok(DisplayAction::PreviousFile),
+            NextFile => return Ok(DisplayAction::NextFile),
             ScrollUpLines(n) => self.scroll_up(n),
             ScrollDownLines(n) => self.scroll_down(n),
             ScrollUpScreenFraction(n) => self.scroll_up_screen_fraction(n),
@@ -1141,11 +1141,11 @@ impl Screen {
             ScrollRightScreenFraction(n) => self.scroll_right_screen_fraction(n),
             ToggleLineNumbers => {
                 self.line_numbers = !self.line_numbers;
-                return Ok(Some(DisplayAction::Refresh));
+                return Ok(DisplayAction::Refresh);
             }
             ToggleLineWrapping => {
                 self.wrapping_mode = self.wrapping_mode.next_mode();
-                return Ok(Some(DisplayAction::Refresh));
+                return Ok(DisplayAction::Refresh);
             }
             PromptGoToLine => self.prompt = Some(command::goto()),
             PromptSearchFromStart => {
@@ -1170,7 +1170,7 @@ impl Screen {
             FirstMatch => self.move_match(MatchMotion::First),
             LastMatch => self.move_match(MatchMotion::Last),
         }
-        Ok(Some(DisplayAction::Render))
+        Ok(DisplayAction::Render)
     }
 
     /// Dispatch a keypress to navigate the displayed file.
@@ -1178,7 +1178,7 @@ impl Screen {
         &mut self,
         key: KeyEvent,
         event_sender: &EventSender,
-    ) -> Result<Option<DisplayAction>, Error> {
+    ) -> Result<DisplayAction, Error> {
         if let Some(binding) = self.keymap.get(key.modifiers, key.key) {
             match binding {
                 Binding::Action(action) => {
@@ -1189,7 +1189,7 @@ impl Screen {
                 Binding::Unrecognized(_) => {}
             }
         }
-        Ok(Some(DisplayAction::Render))
+        Ok(DisplayAction::Render)
     }
 
     /// Set the search for this file.
@@ -1221,7 +1221,7 @@ impl Screen {
     }
 
     /// Dispatch an animation timeout, updating for the next animation frame.
-    pub(crate) fn dispatch_animation(&mut self) -> Option<DisplayAction> {
+    pub(crate) fn dispatch_animation(&mut self) -> DisplayAction {
         if !self.file.loaded() {
             self.refresh_ruler();
         }
@@ -1239,8 +1239,8 @@ impl Screen {
             }
         }
         match &self.pending_refresh {
-            Refresh::None => None,
-            _ => Some(DisplayAction::Render),
+            Refresh::None => DisplayAction::None,
+            _ => DisplayAction::Render,
         }
     }
 
@@ -1256,7 +1256,7 @@ impl Screen {
     }
 
     /// Called when a search finds its first match in order to scroll to that match.
-    pub(crate) fn search_first_match(&mut self) -> Option<DisplayAction> {
+    pub(crate) fn search_first_match(&mut self) -> DisplayAction {
         let current_match = self
             .search
             .as_ref()
@@ -1265,17 +1265,17 @@ impl Screen {
             self.scroll_to(line_index);
             self.refresh_matched_lines();
             self.refresh_overlay();
-            return Some(DisplayAction::Render);
+            return DisplayAction::Render;
         }
-        None
+        DisplayAction::None
     }
 
     /// Called when a search completes.
     #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn search_finished(&mut self) -> Option<DisplayAction> {
+    pub(crate) fn search_finished(&mut self) -> DisplayAction {
         self.refresh_matched_lines();
         self.refresh_overlay();
-        Some(DisplayAction::Render)
+        DisplayAction::Render
     }
 
     /// Move the currently selected match to a new match.

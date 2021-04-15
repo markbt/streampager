@@ -16,7 +16,7 @@ use crate::prompt_history::PromptHistory;
 use crate::screen::Screen;
 use crate::util;
 
-type PromptRunFn = dyn FnMut(&mut Screen, &str) -> Result<Option<DisplayAction>, Error>;
+type PromptRunFn = dyn FnMut(&mut Screen, &str) -> Result<DisplayAction, Error>;
 
 /// A prompt for input from the user.
 pub(crate) struct Prompt {
@@ -166,69 +166,69 @@ impl PromptState {
     }
 
     /// Insert a character at the current position.
-    fn insert_char(&mut self, c: char, width: usize) -> Option<DisplayAction> {
+    fn insert_char(&mut self, c: char, width: usize) -> DisplayAction {
         self.value.insert(self.position, c);
         self.position += 1;
         if self.position == self.value.len() && self.cursor_position() < width - 5 {
-            Some(DisplayAction::Change(Change::Text(c.to_string())))
+            DisplayAction::Change(Change::Text(c.to_string()))
         } else {
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         }
     }
 
-    fn insert_str(&mut self, s: &str) -> Option<DisplayAction> {
+    fn insert_str(&mut self, s: &str) -> DisplayAction {
         let old_len = self.value.len();
         self.value.splice(self.position..self.position, s.chars());
         self.position += self.value.len() - old_len;
-        Some(DisplayAction::RefreshPrompt)
+        DisplayAction::RefreshPrompt
     }
 
     /// Delete previous character.
-    fn delete_prev_char(&mut self) -> Option<DisplayAction> {
+    fn delete_prev_char(&mut self) -> DisplayAction {
         if self.position > 0 {
             self.value.remove(self.position - 1);
             self.position -= 1;
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Delete next character.
-    fn delete_next_char(&mut self) -> Option<DisplayAction> {
+    fn delete_next_char(&mut self) -> DisplayAction {
         if self.position < self.value.len() {
             self.value.remove(self.position);
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Delete previous word.
-    fn delete_prev_word(&mut self) -> Option<DisplayAction> {
+    fn delete_prev_word(&mut self) -> DisplayAction {
         let dest = move_word_backwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.value.splice(dest..self.position, None);
             self.position = dest;
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Delete next word.
-    fn delete_next_word(&mut self) -> Option<DisplayAction> {
+    fn delete_next_word(&mut self) -> DisplayAction {
         let dest = move_word_forwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.value.splice(self.position..dest, None);
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Move right one character.
-    fn move_next_char(&mut self) -> Option<DisplayAction> {
+    fn move_next_char(&mut self) -> DisplayAction {
         if self.position < self.value.len() {
             self.position += 1;
             while self.position < self.value.len() {
@@ -238,14 +238,14 @@ impl PromptState {
                 }
                 self.position += 1;
             }
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Move left one character.
-    fn move_prev_char(&mut self) -> Option<DisplayAction> {
+    fn move_prev_char(&mut self) -> DisplayAction {
         if self.position > 0 {
             while self.position > 0 {
                 self.position -= 1;
@@ -254,77 +254,77 @@ impl PromptState {
                     break;
                 }
             }
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Move right one word.
-    fn move_next_word(&mut self) -> Option<DisplayAction> {
+    fn move_next_word(&mut self) -> DisplayAction {
         let dest = move_word_forwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.position = dest;
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Move left one word.
-    fn move_prev_word(&mut self) -> Option<DisplayAction> {
+    fn move_prev_word(&mut self) -> DisplayAction {
         let dest = move_word_backwards(self.value.as_slice(), self.position);
         if dest != self.position {
             self.position = dest;
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Delete to end of line.
-    fn delete_to_end(&mut self) -> Option<DisplayAction> {
+    fn delete_to_end(&mut self) -> DisplayAction {
         if self.position < self.value.len() {
             self.value.splice(self.position.., None);
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Delete to start of line.
-    fn delete_to_start(&mut self) -> Option<DisplayAction> {
+    fn delete_to_start(&mut self) -> DisplayAction {
         if self.position > 0 {
             self.value.splice(..self.position, None);
             self.position = 0;
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
     /// Move to end of line.
-    fn move_to_end(&mut self) -> Option<DisplayAction> {
+    fn move_to_end(&mut self) -> DisplayAction {
         self.position = self.value.len();
-        Some(DisplayAction::RefreshPrompt)
+        DisplayAction::RefreshPrompt
     }
 
     /// Move to beginning of line.
-    fn move_to_start(&mut self) -> Option<DisplayAction> {
+    fn move_to_start(&mut self) -> DisplayAction {
         self.position = 0;
-        Some(DisplayAction::RefreshPrompt)
+        DisplayAction::RefreshPrompt
     }
 
     /// Transpose characters.
-    fn transpose_chars(&mut self) -> Option<DisplayAction> {
+    fn transpose_chars(&mut self) -> DisplayAction {
         if self.position > 0 && self.value.len() > 1 {
             if self.position < self.value.len() {
                 self.position += 1;
             }
             self.value.swap(self.position - 2, self.position - 1);
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 }
@@ -378,7 +378,7 @@ impl Prompt {
     }
 
     /// Dispatch a key press to the prompt.
-    pub(crate) fn dispatch_key(&mut self, key: KeyEvent, width: usize) -> Option<DisplayAction> {
+    pub(crate) fn dispatch_key(&mut self, key: KeyEvent, width: usize) -> DisplayAction {
         use termwiz::input::{KeyCode::*, Modifiers};
         const CTRL: Modifiers = Modifiers::CTRL;
         const NONE: Modifiers = Modifiers::NONE;
@@ -390,21 +390,21 @@ impl Prompt {
                 let _ = self.history.save();
                 let mut run = self.run.take();
                 let value: String = self.state().value[..].iter().collect();
-                return Some(DisplayAction::Run(Box::new(move |screen: &mut Screen| {
+                return DisplayAction::Run(Box::new(move |screen: &mut Screen| {
                     screen.clear_prompt();
                     if let Some(ref mut run) = run {
                         run(screen, &value)
                     } else {
-                        Ok(Some(DisplayAction::Render))
+                        Ok(DisplayAction::Render)
                     }
-                })));
+                }));
             }
             (NONE, Escape) => {
                 // Cancel.
-                return Some(DisplayAction::Run(Box::new(|screen: &mut Screen| {
+                return DisplayAction::Run(Box::new(|screen: &mut Screen| {
                     screen.clear_prompt();
-                    Ok(Some(DisplayAction::Render))
-                })));
+                    Ok(DisplayAction::Render)
+                }));
             }
             (NONE, Char(c)) => self.state_mut().insert_char(c, value_width),
             (NONE, Backspace) | (CTRL, Char('H')) => self.state_mut().delete_prev_char(),
@@ -422,14 +422,14 @@ impl Prompt {
             (CTRL, Char('T')) => self.state_mut().transpose_chars(),
             (NONE, UpArrow) => self.history.previous(),
             (NONE, DownArrow) => self.history.next(),
-            _ => return None,
+            _ => return DisplayAction::None,
         };
         self.state_mut().clamp_offset(value_width);
         action
     }
 
     /// Paste some text into the prompt.
-    pub(crate) fn paste(&mut self, text: &str, width: usize) -> Option<DisplayAction> {
+    pub(crate) fn paste(&mut self, text: &str, width: usize) -> DisplayAction {
         let value_width = width - self.prompt.width() - 4;
         let action = self.state_mut().insert_str(text);
         self.state_mut().clamp_offset(value_width);

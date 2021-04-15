@@ -98,23 +98,23 @@ impl PromptHistory {
         self.entries[self.active_index].state_mut()
     }
 
-    pub(crate) fn previous(&mut self) -> Option<DisplayAction> {
+    pub(crate) fn previous(&mut self) -> DisplayAction {
         if self.active_index > 0 {
             self.active_index -= 1;
             self.entries[self.active_index].activate();
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 
-    pub(crate) fn next(&mut self) -> Option<DisplayAction> {
+    pub(crate) fn next(&mut self) -> DisplayAction {
         if self.active_index < self.entries.len() - 1 {
             self.active_index += 1;
             self.entries[self.active_index].activate();
-            Some(DisplayAction::RefreshPrompt)
+            DisplayAction::RefreshPrompt
         } else {
-            None
+            DisplayAction::None
         }
     }
 

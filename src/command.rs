@@ -20,11 +20,11 @@ pub(crate) fn goto() -> Prompt {
         "goto",
         "Go to line:",
         Box::new(
-            |screen: &mut Screen, value: &str| -> Result<Option<DisplayAction>, Error> {
+            |screen: &mut Screen, value: &str| -> Result<DisplayAction, Error> {
                 match value {
                     // Let vi users quit with `:q` muscle memory.
-                    "q" => return Ok(Some(DisplayAction::Quit)),
-                    "" => return Ok(Some(DisplayAction::Render)),
+                    "q" => return Ok(DisplayAction::Quit),
+                    "" => return Ok(DisplayAction::Render),
                     _ => {}
                 }
                 let lines = screen.file.lines() as isize;
@@ -63,7 +63,7 @@ pub(crate) fn goto() -> Prompt {
                         }
                     }
                 }
-                Ok(Some(DisplayAction::Render))
+                Ok(DisplayAction::Render)
             },
         ),
     )
@@ -77,7 +77,7 @@ pub(crate) fn search(kind: SearchKind, event_sender: EventSender) -> Prompt {
         "search",
         "Search:",
         Box::new(
-            move |screen: &mut Screen, value: &str| -> Result<Option<DisplayAction>, Error> {
+            move |screen: &mut Screen, value: &str| -> Result<DisplayAction, Error> {
                 screen.refresh_matched_lines();
                 if value.is_empty() {
                     match kind {
@@ -91,7 +91,7 @@ pub(crate) fn search(kind: SearchKind, event_sender: EventSender) -> Prompt {
                         Search::new(&screen.file, value, kind, event_sender.clone()).ok(),
                     );
                 }
-                Ok(Some(DisplayAction::Render))
+                Ok(DisplayAction::Render)
             },
         ),
     )
