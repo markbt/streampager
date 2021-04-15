@@ -11,6 +11,7 @@ categories = ["command-line-utilities", "text-processing"]
 license = "MIT"
 build = "build.rs"
 default-run = "sp"
+include = ["src/**/*", "LICENSE.md", "README.md", "doc/sp.1.txt.tpl", "build.rs"]
 
 [features]
 default = ["keymap-file"]
