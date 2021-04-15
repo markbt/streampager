@@ -256,7 +256,7 @@ impl Screen {
     }
 
     /// Renders the part of the screen that has changed.
-    pub(crate) fn render(&mut self, caps: &Capabilities) -> Result<Vec<Change>, Error> {
+    pub(crate) fn render(&mut self, caps: &Capabilities) -> Vec<Change> {
         let mut changes = vec![
             // Hide the cursor while we render things.
             Change::CursorVisibility(CursorVisibility::Hidden),
@@ -752,7 +752,7 @@ impl Screen {
                             rows,
                             render.left,
                             render.width,
-                        )?;
+                        );
                     }
                     RowContent::Blank => {
                         self.render_blank_line(&mut changes, row);
@@ -764,7 +764,7 @@ impl Screen {
                         self.prompt
                             .as_mut()
                             .expect("prompt should be visible")
-                            .render(&mut changes, row, render.width)?;
+                            .render(&mut changes, row, render.width);
                     }
                     RowContent::Search => {
                         if let Some(search) = self.search.as_mut() {
@@ -775,16 +775,10 @@ impl Screen {
                         self.ruler.bar().render(&mut changes, row, render.width);
                     }
                     RowContent::ErrorFileLinePortion(line, portion) => {
-                        self.render_error_file_line(
-                            &mut changes,
-                            row,
-                            line,
-                            portion,
-                            render.width,
-                        )?;
+                        self.render_error_file_line(&mut changes, row, line, portion, render.width);
                     }
                     RowContent::ProgressLine(line) => {
-                        self.render_progress_line(&mut changes, row, line, render.width)?;
+                        self.render_progress_line(&mut changes, row, line, render.width);
                     }
                 }
             }
@@ -815,7 +809,7 @@ impl Screen {
         self.rendered = render;
         self.pending_refresh = Refresh::None;
 
-        Ok(changes)
+        changes
     }
 
     /// Renders a line of the file on the screen.
@@ -828,7 +822,7 @@ impl Screen {
         rows: usize,
         left: usize,
         width: usize,
-    ) -> Result<(), Error> {
+    ) {
         let line = match self.search {
             Some(ref search) if search.line_matches(line_index) => self
                 .search_line_cache
@@ -890,7 +884,6 @@ impl Screen {
         } else {
             self.render_blank_line(changes, row);
         }
-        Ok(())
     }
 
     fn render_blank_line(&self, changes: &mut Vec<Change>, row: usize) {
@@ -916,7 +909,7 @@ impl Screen {
         line_index: usize,
         portion: usize,
         width: usize,
-    ) -> Result<(), Error> {
+    ) {
         if let Some(error_file) = self.error_file.as_ref() {
             changes.push(Change::CursorPosition {
                 x: Position::Absolute(0),
@@ -930,7 +923,6 @@ impl Screen {
                 changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
             }
         }
-        Ok(())
     }
 
     fn render_progress_line(
@@ -939,7 +931,7 @@ impl Screen {
         row: usize,
         line_index: usize,
         width: usize,
-    ) -> Result<(), Error> {
+    ) {
         if let Some(progress) = self.progress.as_ref() {
             changes.push(Change::CursorPosition {
                 x: Position::Absolute(0),
@@ -952,7 +944,6 @@ impl Screen {
                 changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
             }
         }
-        Ok(())
     }
 
     /// Renders the error message at the bottom of the screen.
@@ -1114,21 +1105,21 @@ impl Screen {
         &mut self,
         action: Action,
         event_sender: &EventSender,
-    ) -> Result<DisplayAction, Error> {
+    ) -> DisplayAction {
         use Action::*;
         match action {
-            Quit => return Ok(DisplayAction::Quit),
-            Refresh => return Ok(DisplayAction::Refresh),
-            Help => return Ok(DisplayAction::ShowHelp),
+            Quit => return DisplayAction::Quit,
+            Refresh => return DisplayAction::Refresh,
+            Help => return DisplayAction::ShowHelp,
             Cancel => {
                 self.error_file = None;
                 self.set_search(None);
                 self.error = None;
                 self.refresh();
-                return Ok(DisplayAction::ClearOverlay);
+                return DisplayAction::ClearOverlay;
             }
-            PreviousFile => return Ok(DisplayAction::PreviousFile),
-            NextFile => return Ok(DisplayAction::NextFile),
+            PreviousFile => return DisplayAction::PreviousFile,
+            NextFile => return DisplayAction::NextFile,
             ScrollUpLines(n) => self.scroll_up(n),
             ScrollDownLines(n) => self.scroll_down(n),
             ScrollUpScreenFraction(n) => self.scroll_up_screen_fraction(n),
@@ -1141,11 +1132,11 @@ impl Screen {
             ScrollRightScreenFraction(n) => self.scroll_right_screen_fraction(n),
             ToggleLineNumbers => {
                 self.line_numbers = !self.line_numbers;
-                return Ok(DisplayAction::Refresh);
+                return DisplayAction::Refresh;
             }
             ToggleLineWrapping => {
                 self.wrapping_mode = self.wrapping_mode.next_mode();
-                return Ok(DisplayAction::Refresh);
+                return DisplayAction::Refresh;
             }
             PromptGoToLine => self.prompt = Some(command::goto()),
             PromptSearchFromStart => {
@@ -1170,7 +1161,7 @@ impl Screen {
             FirstMatch => self.move_match(MatchMotion::First),
             LastMatch => self.move_match(MatchMotion::Last),
         }
-        Ok(DisplayAction::Render)
+        DisplayAction::Render
     }
 
     /// Dispatch a keypress to navigate the displayed file.
@@ -1178,7 +1169,7 @@ impl Screen {
         &mut self,
         key: KeyEvent,
         event_sender: &EventSender,
-    ) -> Result<DisplayAction, Error> {
+    ) -> DisplayAction {
         if let Some(binding) = self.keymap.get(key.modifiers, key.key) {
             match binding {
                 Binding::Action(action) => {
@@ -1189,7 +1180,7 @@ impl Screen {
                 Binding::Unrecognized(_) => {}
             }
         }
-        Ok(DisplayAction::Render)
+        DisplayAction::Render
     }
 
     /// Set the search for this file.

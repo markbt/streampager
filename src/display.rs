@@ -238,8 +238,7 @@ pub(crate) fn start(
         let size = term.get_screen_size().map_err(Error::Termwiz)?;
         screen.resize(size.cols, size.rows);
         screen.maybe_load_more();
-        term.render(&screen.render(&caps)?)
-            .map_err(Error::Termwiz)?;
+        term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
     }
     loop {
         // Listen for an event or input.  If we are animating, put a timeout on the wait.
@@ -258,38 +257,34 @@ pub(crate) fn start(
             match event {
                 None => screen.dispatch_animation(),
                 Some(Event::Render) => {
-                    term.render(&screen.render(&caps)?)
-                        .map_err(Error::Termwiz)?;
+                    term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     DisplayAction::None
                 }
                 Some(Event::Input(InputEvent::Resized { .. })) => {
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
-                    term.render(&screen.render(&caps)?)
-                        .map_err(Error::Termwiz)?;
+                    term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     DisplayAction::None
                 }
                 Some(Event::Refresh) => {
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
-                    term.render(&screen.render(&caps)?)
-                        .map_err(Error::Termwiz)?;
+                    term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     DisplayAction::None
                 }
                 Some(Event::Progress) => {
                     screen.refresh_progress();
-                    term.render(&screen.render(&caps)?)
-                        .map_err(Error::Termwiz)?;
+                    term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     DisplayAction::None
                 }
-                Some(Event::Action(action)) => screen.dispatch_action(action, &event_sender)?,
+                Some(Event::Action(action)) => screen.dispatch_action(action, &event_sender),
                 Some(Event::Input(InputEvent::Key(key))) => {
                     let width = screen.width();
                     if let Some(prompt) = screen.prompt() {
                         prompt.dispatch_key(key, width)
                     } else {
-                        screen.dispatch_key(key, &event_sender)?
+                        screen.dispatch_key(key, &event_sender)
                     }
                 }
                 Some(Event::Input(InputEvent::Paste(ref text))) => {
@@ -360,8 +355,7 @@ pub(crate) fn start(
                         let size = term.get_screen_size().map_err(Error::Termwiz)?;
                         screen.resize(size.cols, size.rows);
                         screen.refresh();
-                        term.render(&screen.render(&caps)?)
-                            .map_err(Error::Termwiz)?;
+                        term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     }
                 }
                 DisplayAction::PreviousFile => {
@@ -372,8 +366,7 @@ pub(crate) fn start(
                         let size = term.get_screen_size().map_err(Error::Termwiz)?;
                         screen.resize(size.cols, size.rows);
                         screen.refresh();
-                        term.render(&screen.render(&caps)?)
-                            .map_err(Error::Termwiz)?;
+                        term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     }
                 }
                 DisplayAction::ShowHelp => {
@@ -392,8 +385,7 @@ pub(crate) fn start(
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
-                    term.render(&screen.render(&caps)?)
-                        .map_err(Error::Termwiz)?;
+                    term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                     screens.overlay = Some(screen);
                     screens.overlay_index = overlay_index;
                 }
@@ -403,8 +395,7 @@ pub(crate) fn start(
                     let size = term.get_screen_size().map_err(Error::Termwiz)?;
                     screen.resize(size.cols, size.rows);
                     screen.refresh();
-                    term.render(&screen.render(&caps)?)
-                        .map_err(Error::Termwiz)?;
+                    term.render(&screen.render(&caps)).map_err(Error::Termwiz)?;
                 }
                 DisplayAction::Quit => {
                     let screen = screens.current();

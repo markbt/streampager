@@ -120,12 +120,7 @@ impl PromptState {
     }
 
     /// Renders the prompt onto the terminal.
-    fn render(
-        &mut self,
-        changes: &mut Vec<Change>,
-        mut position: usize,
-        width: usize,
-    ) -> Result<(), Error> {
+    fn render(&mut self, changes: &mut Vec<Change>, mut position: usize, width: usize) {
         let mut start = self.offset;
         let mut end = self.offset;
         while end < self.value.len() {
@@ -162,7 +157,6 @@ impl PromptState {
         if position < width {
             changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
         }
-        Ok(())
     }
 
     /// Insert a character at the current position.
@@ -353,12 +347,7 @@ impl Prompt {
     }
 
     /// Renders the prompt onto the terminal.
-    pub(crate) fn render(
-        &mut self,
-        changes: &mut Vec<Change>,
-        row: usize,
-        width: usize,
-    ) -> Result<(), Error> {
+    pub(crate) fn render(&mut self, changes: &mut Vec<Change>, row: usize, width: usize) {
         changes.push(Change::CursorPosition {
             x: Position::Absolute(0),
             y: Position::Absolute(row),
@@ -373,8 +362,7 @@ impl Prompt {
         changes.push(Change::AllAttributes(CellAttributes::default()));
         changes.push(Change::Text(" ".into()));
         let offset = self.prompt.width() + 4;
-        self.state_mut().render(changes, offset, width)?;
-        Ok(())
+        self.state_mut().render(changes, offset, width);
     }
 
     /// Dispatch a key press to the prompt.
