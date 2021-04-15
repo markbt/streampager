@@ -913,11 +913,11 @@ mod test {
         );
         assert_eq!(
             parse_spans(b"Terminating LF\n", None),
-            vec![Text("Terminating LF".to_string()), LF]
+            vec![Text("Terminating LF".to_string()), Lf]
         );
         assert_eq!(
             parse_spans(b"Terminating CRLF\r\n", None),
-            vec![Text("Terminating CRLF".to_string()), CRLF]
+            vec![Text("Terminating CRLF".to_string()), CrLf]
         );
 
         assert_eq!(
@@ -935,11 +935,11 @@ mod test {
         );
         assert_eq!(
             parse_spans(b"Internal\nLF", None),
-            vec![Text("Internal".to_string()), LF, Text("LF".to_string())]
+            vec![Text("Internal".to_string()), Lf, Text("LF".to_string())]
         );
         assert_eq!(
             parse_spans(b"Internal\r\nCRLF", None),
-            vec![Text("Internal".to_string()), CRLF, Text("CRLF".to_string())]
+            vec![Text("Internal".to_string()), CrLf, Text("CRLF".to_string())]
         );
     }
 
