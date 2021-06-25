@@ -10,7 +10,7 @@ use regex::bytes::{NoExpand, Regex};
 use smallvec::SmallVec;
 use termwiz::cell::{CellAttributes, Intensity};
 use termwiz::color::{AnsiColor, ColorAttribute};
-use termwiz::escape::csi::{Sgr, CSI};
+use termwiz::escape::csi::{Edit, EraseInLine, Sgr, CSI};
 use termwiz::escape::esc::{Esc, EscCode};
 use termwiz::escape::osc::OperatingSystemCommand;
 use termwiz::escape::parser::Parser;
@@ -71,6 +71,8 @@ struct AttributeState {
     changed: bool,
     /// What the currently applied style is.
     style: OutputStyle,
+    /// What color the end of the line should be
+    end_of_line: ColorAttribute,
 }
 
 impl AttributeState {
@@ -81,6 +83,7 @@ impl AttributeState {
             line_drawing: false,
             changed: false,
             style: OutputStyle::File,
+            end_of_line: ColorAttribute::default(),
         }
     }
 
@@ -196,6 +199,8 @@ enum Span {
     CrLf,
     /// A terminating LF sequence.
     Lf,
+    /// An erase-to-end-of-line sequence.
+    EraseToEndOfLine,
 }
 
 /// Produce `Change`s to output some text in the given style at the given
@@ -357,6 +362,7 @@ impl Span {
             Span::SgrSequence(ref s) => attr_state.apply_sgr_sequence(s),
             Span::Hyperlink(ref l) => attr_state.apply_hyperlink(l),
             Span::LineDrawing(e) => attr_state.line_drawing = e,
+            Span::EraseToEndOfLine => attr_state.end_of_line = attr_state.attrs.background,
             _ => {}
         }
         position
@@ -506,6 +512,12 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
                                 }
                             }
                             span = Some(Span::SgrSequence(sgr_sequence));
+                            skip_to = Some(index + len);
+                        }
+                        Some(Action::CSI(CSI::Edit(Edit::EraseInLine(
+                            EraseInLine::EraseToEndOfLine,
+                        )))) => {
+                            span = Some(Span::EraseToEndOfLine);
                             skip_to = Some(index + len);
                         }
                         Some(Action::CSI(CSI::Cursor(_))) | Some(Action::CSI(CSI::Edit(_))) => {
@@ -721,7 +733,7 @@ impl Line {
                 ));
                 changes.push(RIGHT_ARROW.into());
             }
-            Ordering::Less => changes.push(Change::ClearToEndOfLine(ColorAttribute::default())),
+            Ordering::Less => changes.push(Change::ClearToEndOfLine(attr_state.end_of_line)),
             Ordering::Equal => {}
         }
         changes.push(Change::AllAttributes(CellAttributes::default()));
@@ -765,7 +777,7 @@ impl Line {
             position = span.render(changes, &mut attr_state, start, end, position, search_index);
         }
         if end - start < width * row_count {
-            changes.push(Change::ClearToEndOfLine(ColorAttribute::default()));
+            changes.push(Change::ClearToEndOfLine(attr_state.end_of_line));
         }
         changes.push(Change::AllAttributes(CellAttributes::default()));
     }
