@@ -98,6 +98,10 @@ pub enum Action {
 
     /// Move to the last match.
     LastMatch,
+
+    /// Append a digit to the "repeat count".
+    /// The count defines how many times to do the next operation.
+    AppendDigitToRepeatCount(usize),
 }
 
 impl std::fmt::Display for Action {
@@ -142,6 +146,7 @@ impl std::fmt::Display for Action {
             NextMatchScreen => write!(f, "Move to the next match following the screen"),
             FirstMatch => write!(f, "Move to the first match"),
             LastMatch => write!(f, "Move to the last match"),
+            AppendDigitToRepeatCount(n) => write!(f, "Append digit {} to repeat count", n),
         }
     }
 }

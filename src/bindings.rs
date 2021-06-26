@@ -153,6 +153,7 @@ impl Binding {
                     | ScrollRightColumns(_)
                     | ScrollLeftScreenFraction(_)
                     | ScrollRightScreenFraction(_)
+                    | AppendDigitToRepeatCount(_)
                     | PromptGoToLine => Category::Navigation,
                     ToggleLineNumbers | ToggleLineWrapping => Category::Presentation,
                     PromptSearchFromStart
