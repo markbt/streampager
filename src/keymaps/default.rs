@@ -10,8 +10,8 @@ keymap! {
     SHIFT DownArrow, (ApplicationDownArrow) => ScrollDownScreenFraction(4);
     CTRL UpArrow, 'u', CTRL 'U' => ScrollUpScreenFraction(2);
     CTRL DownArrow, 'd', CTRL 'D' => ScrollDownScreenFraction(2);
-    PageUp, Backspace, 'b', CTRL 'B' => ScrollUpScreenFraction(1);
-    PageDown, ' ', 'f', CTRL 'F' => ScrollDownScreenFraction(1);
+    PageUp, Backspace, 'b', CTRL 'B', ALT 'V' => ScrollUpScreenFraction(1);
+    PageDown, ' ', 'f', CTRL 'F', CTRL 'V' => ScrollDownScreenFraction(1);
     Home, 'g', '<' => ScrollToTop;
     End, 'F', 'G', '>' => ScrollToBottom;
     LeftArrow => ScrollLeftColumns(4);
