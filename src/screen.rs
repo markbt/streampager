@@ -1273,7 +1273,12 @@ impl Screen {
     pub(crate) fn move_match(&mut self, motion: MatchMotion) {
         self.refresh_matched_line();
         if let Some(ref mut search) = self.search {
-            search.move_match(motion);
+            let scope = if self.config.search_follow_screen {
+                Some(self.rendered.top_line..=self.rendered.bottom_line)
+            } else {
+                None
+            };
+            search.move_match(motion, scope);
             if let Some((line_index, _match_index)) = search.current_match() {
                 self.scroll_to(line_index);
             }

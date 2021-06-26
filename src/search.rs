@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cmp::min;
+use std::ops::RangeInclusive;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -272,11 +273,22 @@ impl Search {
     }
 
     /// Moves to another match if there is one.
-    pub(crate) fn move_match(&mut self, motion: MatchMotion) {
+    ///
+    /// If `line_scope` is provided, and the current match is outside the line range,
+    /// try to make sure the result is in the scope.
+    pub(crate) fn move_match(
+        &mut self,
+        motion: MatchMotion,
+        line_scope: Option<RangeInclusive<usize>>,
+    ) {
         let matches = self.inner.matches.read().unwrap();
         if matches.len() > 0 {
             let mut current_match_index = self.inner.current_match.write().unwrap();
             if let Some(ref mut index) = *current_match_index {
+                let need_seek = match &line_scope {
+                    None => false,
+                    Some(scope) => !scope.contains(&matches[*index].0),
+                };
                 match motion {
                     MatchMotion::First => *index = 0,
                     MatchMotion::PreviousLine => {
@@ -299,6 +311,45 @@ impl Search {
                     }
                     MatchMotion::Last => *index = matches.len() - 1,
                     _ => {}
+                }
+
+                if let Some(scope) = &line_scope {
+                    // Attempt to satisfy the scope limit.
+                    if need_seek {
+                        match motion {
+                            MatchMotion::Next | MatchMotion::NextLine => {
+                                let mut candidate_index = *index;
+                                if matches[candidate_index].0 > *scope.end() {
+                                    // Re-search from the beginning.
+                                    candidate_index = 0;
+                                }
+                                // Search forward.
+                                while candidate_index < matches.len() - 1 {
+                                    if matches[candidate_index].0 >= *scope.start() {
+                                        *index = candidate_index;
+                                        break;
+                                    }
+                                    candidate_index += 1;
+                                }
+                            }
+                            MatchMotion::Previous | MatchMotion::PreviousLine => {
+                                let mut candidate_index = *index;
+                                if matches[candidate_index].0 < *scope.start() {
+                                    // Re-search from the end.
+                                    candidate_index = matches.len() - 1;
+                                }
+                                // Search backward.
+                                while candidate_index > 0 {
+                                    if matches[candidate_index].0 <= *scope.end() {
+                                        *index = candidate_index;
+                                        break;
+                                    }
+                                    candidate_index -= 1;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             }
         }

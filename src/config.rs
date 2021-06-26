@@ -169,6 +169,9 @@ pub struct Config {
 
     /// Specify the name of the default key map.
     pub keymap: KeymapConfig,
+
+    /// Specify whether search follows current screen.
+    pub search_follow_screen: bool,
 }
 
 impl Default for Config {
@@ -179,6 +182,7 @@ impl Default for Config {
             read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
             wrapping_mode: Default::default(),
             keymap: Default::default(),
+            search_follow_screen: true,
         }
     }
 }
@@ -211,6 +215,11 @@ impl Config {
         if let Ok(s) = var("SP_SCROLL_PAST_EOF") {
             if let Some(b) = parse_bool(&s) {
                 self.scroll_past_eof = b;
+            }
+        }
+        if let Ok(s) = var("SP_SEARCH_FOLLOW_SCREEN") {
+            if let Some(b) = parse_bool(&s) {
+                self.search_follow_screen = b;
             }
         }
         if let Ok(s) = var("SP_READ_AHEAD_LINES") {

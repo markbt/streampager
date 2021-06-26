@@ -221,6 +221,11 @@ impl Pager {
         self.config.keymap = KeymapConfig::Name(keymap.into());
     }
 
+    /// Set whether search should follow screen.
+    pub fn set_search_follow_screen(&mut self, value: bool) {
+        self.config.search_follow_screen = value;
+    }
+
     /// Set keymap.
     pub fn set_keymap(&mut self, keymap: Keymap) {
         self.config.keymap = KeymapConfig::Keymap(Arc::new(keymap));
