@@ -48,6 +48,7 @@ use crate::line::Line;
 use crate::line_cache::LineCache;
 use crate::progress::Progress;
 use crate::prompt::Prompt;
+use crate::prompt_history;
 use crate::refresh::Refresh;
 use crate::ruler::Ruler;
 use crate::search::{MatchMotion, Search, SearchKind};
@@ -1161,12 +1162,14 @@ impl Screen {
                     event_sender.clone(),
                 ))
             }
-            PreviousMatch => self.move_match(MatchMotion::Previous),
-            NextMatch => self.move_match(MatchMotion::Next),
-            PreviousMatchLine => self.move_match(MatchMotion::PreviousLine),
-            NextMatchLine => self.move_match(MatchMotion::NextLine),
-            FirstMatch => self.move_match(MatchMotion::First),
-            LastMatch => self.move_match(MatchMotion::Last),
+            PreviousMatch => self.create_or_move_match(MatchMotion::Previous, event_sender.clone()),
+            NextMatch => self.create_or_move_match(MatchMotion::Next, event_sender.clone()),
+            PreviousMatchLine => {
+                self.create_or_move_match(MatchMotion::PreviousLine, event_sender.clone())
+            }
+            NextMatchLine => self.create_or_move_match(MatchMotion::NextLine, event_sender.clone()),
+            FirstMatch => self.create_or_move_match(MatchMotion::First, event_sender.clone()),
+            LastMatch => self.create_or_move_match(MatchMotion::Last, event_sender.clone()),
         }
         DisplayAction::Render
     }
@@ -1291,6 +1294,34 @@ impl Screen {
             }
             self.refresh_matched_line();
             self.refresh_search_status();
+        }
+    }
+
+    /// Like `move_match`, but create a new search from history based on the
+    /// last pattern on demand.
+    pub(crate) fn create_or_move_match(&mut self, motion: MatchMotion, event_sender: EventSender) {
+        if self.search.is_some() {
+            self.move_match(motion)
+        } else {
+            // Attempt to load search from history.
+            if let Some(pattern) = prompt_history::peek_last("search") {
+                if !pattern.is_empty() {
+                    let kind = match motion {
+                        MatchMotion::First => SearchKind::First,
+                        MatchMotion::Last => SearchKind::FirstBefore(self.file.lines()),
+                        MatchMotion::Next | MatchMotion::NextLine => {
+                            SearchKind::FirstAfter(self.rendered.top_line)
+                        }
+                        MatchMotion::Previous | MatchMotion::PreviousLine => {
+                            SearchKind::FirstBefore(self.rendered.bottom_line)
+                        }
+                    };
+                    if let Ok(search) = Search::new(&self.file, &pattern, kind, event_sender) {
+                        self.search = Some(search);
+                        self.move_match(motion)
+                    }
+                }
+            }
         }
     }
 
