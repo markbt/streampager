@@ -973,6 +973,13 @@ impl Screen {
         }
     }
 
+    /// Refreshes the search bar on the next render.
+    pub(crate) fn refresh_search_status(&mut self) {
+        if let Some(search_row) = self.rendered.search_row {
+            self.pending_refresh.add_range(search_row, search_row + 1);
+        }
+    }
+
     /// Refreshes the prompt on the next render.
     pub(crate) fn refresh_prompt(&mut self) {
         if let Some(prompt_row) = self.rendered.prompt_row {
@@ -1283,6 +1290,7 @@ impl Screen {
                 self.scroll_to(line_index);
             }
             self.refresh_matched_line();
+            self.refresh_search_status();
         }
     }
 
