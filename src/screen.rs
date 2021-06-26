@@ -1152,6 +1152,12 @@ impl Screen {
                 let repeat = self.apply_repeat_count(1);
                 self.scroll_down_screen_fraction(n, repeat)
             }
+            ScrollToTop | ScrollToBottom if self.repeat_count.is_some() => {
+                if let Some(n) = self.repeat_count {
+                    // Convert 1-based to 0-based line number.
+                    self.scroll_to(n.max(1) - 1);
+                }
+            }
             ScrollToTop => self.scroll_to(0),
             ScrollToBottom => self.following_end = true,
             ScrollLeftColumns(n) => {
