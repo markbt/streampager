@@ -1243,11 +1243,15 @@ impl Screen {
             None => None,
             Some(count) => Some(count.saturating_mul(10).saturating_add(digit)),
         };
+        self.ruler.set_repeat_count(new_count);
+        self.refresh_ruler();
         self.repeat_count = new_count;
     }
 
     /// Clear the repeat count.
     pub(crate) fn clear_repeat_count(&mut self) {
+        self.ruler.set_repeat_count(None);
+        self.refresh_ruler();
         self.repeat_count = None;
     }
 

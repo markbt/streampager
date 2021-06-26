@@ -17,6 +17,7 @@ use crate::util;
 pub(crate) struct Ruler {
     position: Arc<PositionIndicator>,
     loading: Arc<LoadingIndicator>,
+    repeat_count: Arc<RepeatCountIndicator>,
     ruler_bar: Bar,
 }
 
@@ -26,9 +27,11 @@ impl Ruler {
         let file_info = Arc::new(FileInformationIndicator::new(file.clone()));
         let position = Arc::new(PositionIndicator::new(file.clone()));
         let loading = Arc::new(LoadingIndicator::new(file));
+        let repeat_count = Arc::new(RepeatCountIndicator::default());
 
         let mut ruler_bar = Bar::new(BarStyle::Normal);
         ruler_bar.add_left_item(title);
+        ruler_bar.add_right_item(repeat_count.clone());
         ruler_bar.add_right_item(file_info);
         ruler_bar.add_right_item(position.clone());
         ruler_bar.add_right_item(loading.clone());
@@ -36,6 +39,7 @@ impl Ruler {
         Ruler {
             position,
             loading,
+            repeat_count,
             ruler_bar,
         }
     }
@@ -69,6 +73,12 @@ impl Ruler {
         self.loading
             .following_end
             .store(following_end, Ordering::SeqCst);
+    }
+
+    pub(crate) fn set_repeat_count(&self, count: Option<usize>) {
+        self.repeat_count
+            .count
+            .store(count.unwrap_or(0), Ordering::Relaxed);
     }
 }
 
@@ -240,6 +250,31 @@ impl BarItem for LoadingIndicator {
 
     fn render(&self, changes: &mut Vec<Change>, width: usize) {
         if let Some(content) = self.content() {
+            changes.push(Change::Text(util::truncate_string(content, 0, width)));
+        }
+    }
+}
+
+#[derive(Default)]
+struct RepeatCountIndicator {
+    count: AtomicUsize,
+}
+
+impl BarItem for RepeatCountIndicator {
+    fn width(&self) -> usize {
+        let mut count = self.count.load(Ordering::Relaxed);
+        let mut width = 0;
+        while count > 0 {
+            count /= 10;
+            width += 1;
+        }
+        width
+    }
+
+    fn render(&self, changes: &mut Vec<Change>, width: usize) {
+        let count = self.count.load(Ordering::Relaxed);
+        if count > 0 {
+            let content = format!("{}", count);
             changes.push(Change::Text(util::truncate_string(content, 0, width)));
         }
     }
