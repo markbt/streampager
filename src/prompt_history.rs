@@ -98,6 +98,11 @@ impl PromptHistory {
         self.entries[self.active_index].state_mut()
     }
 
+    /// Stored value from history.
+    pub(crate) fn stored(&self) -> Option<String> {
+        self.entries[self.active_index].stored.clone()
+    }
+
     pub(crate) fn previous(&mut self) -> DisplayAction {
         if self.active_index > 0 {
             self.active_index -= 1;
@@ -151,4 +156,11 @@ impl PromptHistory {
         }
         Ok(())
     }
+}
+
+/// Peak the last entry from history.
+pub(crate) fn peek_last(ident: &str) -> Option<String> {
+    let mut history = PromptHistory::open(ident);
+    history.previous();
+    history.stored()
 }

@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cmp::min;
+use std::ops::RangeInclusive;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -40,10 +41,12 @@ pub(crate) enum SearchKind {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) enum MatchMotion {
     First,
-    PreviousLine,
     Previous,
+    PreviousLine,
+    PreviousScreen,
     Next,
     NextLine,
+    NextScreen,
     Last,
 }
 
@@ -272,11 +275,19 @@ impl Search {
     }
 
     /// Moves to another match if there is one.
-    pub(crate) fn move_match(&mut self, motion: MatchMotion) {
+    ///
+    /// `scope` describes visible lines of the file on screen.
+    /// It is used for `*Screen` movements.
+    pub(crate) fn move_match(&mut self, motion: MatchMotion, scope: RangeInclusive<usize>) {
         let matches = self.inner.matches.read().unwrap();
         if matches.len() > 0 {
             let mut current_match_index = self.inner.current_match.write().unwrap();
             if let Some(ref mut index) = *current_match_index {
+                // If the current match is within `line_scope`, then `*Screen` is just `*` movement.
+                let need_seek = matches!(
+                    motion,
+                    MatchMotion::NextScreen | MatchMotion::PreviousScreen
+                ) && !scope.contains(&matches[*index].0);
                 match motion {
                     MatchMotion::First => *index = 0,
                     MatchMotion::PreviousLine => {
@@ -285,8 +296,12 @@ impl Search {
                             *index -= match_index + 1;
                         }
                     }
-                    MatchMotion::Previous if *index > 0 => *index -= 1,
-                    MatchMotion::Next if *index < matches.len() - 1 => *index += 1,
+                    MatchMotion::Previous | MatchMotion::PreviousScreen if *index > 0 => {
+                        *index -= 1
+                    }
+                    MatchMotion::Next | MatchMotion::NextScreen if *index < matches.len() - 1 => {
+                        *index += 1
+                    }
                     MatchMotion::NextLine => {
                         let line_index = matches[*index].0;
                         let mut new_index = *index;
@@ -299,6 +314,43 @@ impl Search {
                     }
                     MatchMotion::Last => *index = matches.len() - 1,
                     _ => {}
+                }
+
+                // Attempt to satisfy the scope limit.
+                if need_seek {
+                    match motion {
+                        MatchMotion::NextScreen => {
+                            let mut candidate_index = *index;
+                            if matches[candidate_index].0 > *scope.end() {
+                                // Re-search from the beginning.
+                                candidate_index = 0;
+                            }
+                            // Search forward.
+                            while candidate_index < matches.len() - 1 {
+                                if matches[candidate_index].0 >= *scope.start() {
+                                    *index = candidate_index;
+                                    break;
+                                }
+                                candidate_index += 1;
+                            }
+                        }
+                        MatchMotion::PreviousScreen => {
+                            let mut candidate_index = *index;
+                            if matches[candidate_index].0 < *scope.start() {
+                                // Re-search from the end.
+                                candidate_index = matches.len() - 1;
+                            }
+                            // Search backward.
+                            while candidate_index > 0 {
+                                if matches[candidate_index].0 <= *scope.end() {
+                                    *index = candidate_index;
+                                    break;
+                                }
+                                candidate_index -= 1;
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
