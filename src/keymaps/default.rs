@@ -28,8 +28,8 @@ keymap! {
     '?' => PromptSearchBackwards;
     ',' => PreviousMatch;
     '.' => NextMatch;
-    'p', ('N') => PreviousMatchLine;
-    'n' => NextMatchLine;
+    'p', ('N') => PreviousMatchScreen;
+    'n' => NextMatchScreen;
     '(' => FirstMatch;
     ')' => LastMatch;
 }

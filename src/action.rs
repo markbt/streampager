@@ -87,6 +87,12 @@ pub enum Action {
     /// Move to the next line that contains a match.
     NextMatchLine,
 
+    /// Move to the previous match, follow the current screen.
+    PreviousMatchScreen,
+
+    /// Move to the next match, follow the current screen.
+    NextMatchScreen,
+
     /// Move to the first match.
     FirstMatch,
 
@@ -132,6 +138,8 @@ impl std::fmt::Display for Action {
             NextMatch => write!(f, "Move to the next match"),
             PreviousMatchLine => write!(f, "Move to the previous matching line"),
             NextMatchLine => write!(f, "Move the the next matching line"),
+            PreviousMatchScreen => write!(f, "Move to the previous match following the screen"),
+            NextMatchScreen => write!(f, "Move to the next match following the screen"),
             FirstMatch => write!(f, "Move to the first match"),
             LastMatch => write!(f, "Move to the last match"),
         }

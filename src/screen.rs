@@ -1168,6 +1168,12 @@ impl Screen {
                 self.create_or_move_match(MatchMotion::PreviousLine, event_sender.clone())
             }
             NextMatchLine => self.create_or_move_match(MatchMotion::NextLine, event_sender.clone()),
+            PreviousMatchScreen => {
+                self.create_or_move_match(MatchMotion::PreviousScreen, event_sender.clone())
+            }
+            NextMatchScreen => {
+                self.create_or_move_match(MatchMotion::NextScreen, event_sender.clone())
+            }
             FirstMatch => self.create_or_move_match(MatchMotion::First, event_sender.clone()),
             LastMatch => self.create_or_move_match(MatchMotion::Last, event_sender.clone()),
         }
@@ -1283,11 +1289,7 @@ impl Screen {
     pub(crate) fn move_match(&mut self, motion: MatchMotion) {
         self.refresh_matched_line();
         if let Some(ref mut search) = self.search {
-            let scope = if self.config.search_follow_screen {
-                Some(self.rendered.top_line..=self.rendered.bottom_line)
-            } else {
-                None
-            };
+            let scope = self.rendered.top_line..=self.rendered.bottom_line;
             search.move_match(motion, scope);
             if let Some((line_index, _match_index)) = search.current_match() {
                 self.scroll_to(line_index);
@@ -1309,10 +1311,12 @@ impl Screen {
                     let kind = match motion {
                         MatchMotion::First => SearchKind::First,
                         MatchMotion::Last => SearchKind::FirstBefore(self.file.lines()),
-                        MatchMotion::Next | MatchMotion::NextLine => {
+                        MatchMotion::Next | MatchMotion::NextLine | MatchMotion::NextScreen => {
                             SearchKind::FirstAfter(self.rendered.top_line)
                         }
-                        MatchMotion::Previous | MatchMotion::PreviousLine => {
+                        MatchMotion::Previous
+                        | MatchMotion::PreviousLine
+                        | MatchMotion::PreviousScreen => {
                             SearchKind::FirstBefore(self.rendered.bottom_line)
                         }
                     };

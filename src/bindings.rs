@@ -162,6 +162,8 @@ impl Binding {
                     | PreviousMatch
                     | NextMatchLine
                     | PreviousMatchLine
+                    | PreviousMatchScreen
+                    | NextMatchScreen
                     | FirstMatch
                     | LastMatch => Category::Searching,
                 }
