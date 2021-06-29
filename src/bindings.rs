@@ -79,9 +79,13 @@ pub enum Category {
 
     /// Actions that initiate or modify searches.
     Searching,
+
+    /// Actions that are hidden in help view (for example, too verbose).
+    Hidden,
 }
 
 impl Category {
+    /// Non-hidden categories.
     pub(crate) fn categories() -> impl Iterator<Item = Category> {
         [
             Category::General,
@@ -103,6 +107,7 @@ impl std::fmt::Display for Category {
             Category::Navigation => f.write_str("Navigation"),
             Category::Presentation => f.write_str("Presentation"),
             Category::Searching => f.write_str("Searching"),
+            Category::Hidden => f.write_str("Hidden"),
         }
     }
 }
@@ -166,6 +171,7 @@ impl Binding {
                     | NextMatchScreen
                     | FirstMatch
                     | LastMatch => Category::Searching,
+                    AppendDigitToRepeatCount(_) => Category::Hidden,
                 }
             }
             Binding::Custom(binding) => binding.category,

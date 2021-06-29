@@ -32,4 +32,14 @@ keymap! {
     'n' => NextMatchScreen;
     '(' => FirstMatch;
     ')' => LastMatch;
+    '0' => AppendDigitToRepeatCount(0);
+    '1' => AppendDigitToRepeatCount(1);
+    '2' => AppendDigitToRepeatCount(2);
+    '3' => AppendDigitToRepeatCount(3);
+    '4' => AppendDigitToRepeatCount(4);
+    '5' => AppendDigitToRepeatCount(5);
+    '6' => AppendDigitToRepeatCount(6);
+    '7' => AppendDigitToRepeatCount(7);
+    '8' => AppendDigitToRepeatCount(8);
+    '9' => AppendDigitToRepeatCount(9);
 }

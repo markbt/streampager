@@ -200,6 +200,9 @@ pub(crate) struct Screen {
 
     /// Configuration set by the top-level `Pager`.
     config: Arc<Config>,
+
+    /// Repeat the next operation for the given times.
+    repeat_count: Option<usize>,
 }
 
 impl Screen {
@@ -229,6 +232,7 @@ impl Screen {
             pending_refresh: Refresh::None,
             config,
             file,
+            repeat_count: None,
         })
     }
 
@@ -851,7 +855,7 @@ impl Screen {
             changes.push(Change::AllAttributes(CellAttributes::default()));
 
             let start = left;
-            let mut end = left + width;
+            let mut end = left.saturating_add(width);
             if self.line_numbers {
                 let lw = number_width(self.file.lines());
                 if lw + 2 < width {
@@ -1076,35 +1080,35 @@ impl Screen {
         }
     }
 
-    /// Scroll up (screen / n) lines.
-    fn scroll_up_screen_fraction(&mut self, n: usize) {
+    /// Scroll up (screen / n) * repeat lines.
+    fn scroll_up_screen_fraction(&mut self, n: usize, repeat: usize) {
         if n != 0 {
             let lines = (self.rendered.height - self.rendered.overlay_height) / n;
-            self.scroll_up(lines);
+            self.scroll_up(lines.saturating_mul(repeat));
         }
     }
 
-    /// Scroll down (screen / n) lines.
-    fn scroll_down_screen_fraction(&mut self, n: usize) {
+    /// Scroll down (screen / n) * repeat lines.
+    fn scroll_down_screen_fraction(&mut self, n: usize, repeat: usize) {
         if n != 0 {
             let lines = (self.rendered.height - self.rendered.overlay_height) / n;
-            self.scroll_down(lines);
+            self.scroll_down(lines.saturating_mul(repeat));
         }
     }
 
-    /// Scroll left (screen / n) columns.
-    fn scroll_left_screen_fraction(&mut self, n: usize) {
+    /// Scroll left (screen / n) * repeat columns.
+    fn scroll_left_screen_fraction(&mut self, n: usize, repeat: usize) {
         if n != 0 {
             let columns = self.rendered.width / n;
-            self.scroll_left(columns);
+            self.scroll_left(columns.saturating_mul(repeat));
         }
     }
 
-    /// Scroll right (screen / n) columns.
-    fn scroll_right_screen_fraction(&mut self, n: usize) {
+    /// Scroll right (screen / n) * repeat columns.
+    fn scroll_right_screen_fraction(&mut self, n: usize, repeat: usize) {
         if n != 0 {
             let columns = self.rendered.width / n;
-            self.scroll_right(columns);
+            self.scroll_right(columns.saturating_mul(repeat));
         }
     }
 
@@ -1120,24 +1124,58 @@ impl Screen {
             Refresh => return DisplayAction::Refresh,
             Help => return DisplayAction::ShowHelp,
             Cancel => {
-                self.error_file = None;
-                self.set_search(None);
-                self.error = None;
-                self.refresh();
-                return DisplayAction::ClearOverlay;
+                if self.repeat_count.is_some() {
+                    self.clear_repeat_count();
+                } else {
+                    self.error_file = None;
+                    self.set_search(None);
+                    self.error = None;
+                    self.refresh();
+                    return DisplayAction::ClearOverlay;
+                }
             }
             PreviousFile => return DisplayAction::PreviousFile,
             NextFile => return DisplayAction::NextFile,
-            ScrollUpLines(n) => self.scroll_up(n),
-            ScrollDownLines(n) => self.scroll_down(n),
-            ScrollUpScreenFraction(n) => self.scroll_up_screen_fraction(n),
-            ScrollDownScreenFraction(n) => self.scroll_down_screen_fraction(n),
+            ScrollUpLines(n) => {
+                let n = self.apply_repeat_count(n);
+                self.scroll_up(n)
+            }
+            ScrollDownLines(n) => {
+                let n = self.apply_repeat_count(n);
+                self.scroll_down(n)
+            }
+            ScrollUpScreenFraction(n) => {
+                let repeat = self.apply_repeat_count(1);
+                self.scroll_up_screen_fraction(n, repeat)
+            }
+            ScrollDownScreenFraction(n) => {
+                let repeat = self.apply_repeat_count(1);
+                self.scroll_down_screen_fraction(n, repeat)
+            }
+            ScrollToTop | ScrollToBottom if self.repeat_count.is_some() => {
+                if let Some(n) = self.repeat_count {
+                    // Convert 1-based to 0-based line number.
+                    self.scroll_to(n.max(1) - 1);
+                }
+            }
             ScrollToTop => self.scroll_to(0),
             ScrollToBottom => self.following_end = true,
-            ScrollLeftColumns(n) => self.scroll_left(n),
-            ScrollRightColumns(n) => self.scroll_right(n),
-            ScrollLeftScreenFraction(n) => self.scroll_left_screen_fraction(n),
-            ScrollRightScreenFraction(n) => self.scroll_right_screen_fraction(n),
+            ScrollLeftColumns(n) => {
+                let n = self.apply_repeat_count(n);
+                self.scroll_left(n)
+            }
+            ScrollRightColumns(n) => {
+                let n = self.apply_repeat_count(n);
+                self.scroll_right(n)
+            }
+            ScrollLeftScreenFraction(n) => {
+                let repeat = self.apply_repeat_count(1);
+                self.scroll_left_screen_fraction(n, repeat)
+            }
+            ScrollRightScreenFraction(n) => {
+                let repeat = self.apply_repeat_count(1);
+                self.scroll_right_screen_fraction(n, repeat)
+            }
             ToggleLineNumbers => {
                 self.line_numbers = !self.line_numbers;
                 return DisplayAction::Refresh;
@@ -1176,6 +1214,10 @@ impl Screen {
             }
             FirstMatch => self.create_or_move_match(MatchMotion::First, event_sender.clone()),
             LastMatch => self.create_or_move_match(MatchMotion::Last, event_sender.clone()),
+            AppendDigitToRepeatCount(n) => self.append_digit_to_repeat_count(n),
+        }
+        if !matches!(action, AppendDigitToRepeatCount(_)) {
+            self.clear_repeat_count();
         }
         DisplayAction::Render
     }
@@ -1197,6 +1239,31 @@ impl Screen {
             }
         }
         DisplayAction::Render
+    }
+
+    /// Append a digit to the repeat count.
+    pub(crate) fn append_digit_to_repeat_count(&mut self, digit: usize) {
+        assert!(digit < 10);
+        let new_count = match self.repeat_count {
+            None if digit > 0 => Some(digit),
+            None => None,
+            Some(count) => Some(count.saturating_mul(10).saturating_add(digit)),
+        };
+        self.ruler.set_repeat_count(new_count);
+        self.refresh_ruler();
+        self.repeat_count = new_count;
+    }
+
+    /// Clear the repeat count.
+    pub(crate) fn clear_repeat_count(&mut self) {
+        self.ruler.set_repeat_count(None);
+        self.refresh_ruler();
+        self.repeat_count = None;
+    }
+
+    /// Multiply `n` by the repeat count.
+    pub(crate) fn apply_repeat_count(&self, n: usize) -> usize {
+        self.repeat_count.unwrap_or(1).saturating_mul(n)
     }
 
     /// Set the search for this file.
