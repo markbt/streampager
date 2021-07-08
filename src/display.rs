@@ -190,11 +190,13 @@ pub(crate) fn start(
     match outcome {
         direct::Outcome::RenderComplete | direct::Outcome::Interrupted => return Ok(()),
         direct::Outcome::RenderIncomplete(rows) => {
-            // Push the rendered output up to the top of the screen, so
-            // that when we start rendering full screen we don't
-            // overwrite output from earlier commands.
+            // Push the rendered output up to the top of the screen, so that
+            // when we start rendering full screen we don't overwrite output
+            // from earlier commands.  In direct mode the bottom line held the
+            // cursor, so we must subtract that line, too, otherwise we will
+            // scroll up too far.
             let size = term.get_screen_size().map_err(Error::Termwiz)?;
-            let scroll_count = size.rows.saturating_sub(rows);
+            let scroll_count = size.rows.saturating_sub(rows).saturating_sub(1);
             if scroll_count > 0 {
                 term.render(&[Change::Text("\n".repeat(scroll_count))])
                     .map_err(Error::Termwiz)?;
