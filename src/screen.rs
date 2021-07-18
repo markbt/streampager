@@ -185,6 +185,9 @@ pub(crate) struct Screen {
     /// The ruler.
     ruler: Ruler,
 
+    /// Whether the ruler should be shown.
+    show_ruler: bool,
+
     /// Whether we are following the end of the file.  If `true`, we will scroll down to the
     /// end as new input arrives.
     following_end: bool,
@@ -226,6 +229,7 @@ impl Screen {
             prompt: None,
             search: None,
             ruler: Ruler::new(file.clone()),
+            show_ruler: config.show_ruler,
             following_end: false,
             pending_absolute_scroll: None,
             pending_relative_scroll: 0,
@@ -327,7 +331,7 @@ impl Screen {
             .collect();
 
         // Compute where the overlay will go
-        let ruler_height = 1;
+        let ruler_height = self.show_ruler as usize;
         render.progress_height = self.progress.as_ref().map(|f| f.lines()).unwrap_or(0);
         render.error_file_height = error_file_line_portions.len();
         render.overlay_height = render.progress_height
@@ -352,9 +356,11 @@ impl Screen {
                     error_file_line_portion.1,
                 );
             }
-            row -= 1;
-            row_contents[row] = RowContent::Ruler;
-            render.ruler_row = Some(row);
+            if self.show_ruler {
+                row -= 1;
+                row_contents[row] = RowContent::Ruler;
+                render.ruler_row = Some(row);
+            }
             if self.search.is_some() {
                 row -= 1;
                 row_contents[row] = RowContent::Search;
@@ -1136,6 +1142,9 @@ impl Screen {
             }
             PreviousFile => return DisplayAction::PreviousFile,
             NextFile => return DisplayAction::NextFile,
+            ToggleRuler => {
+                self.show_ruler = !self.show_ruler;
+            }
             ScrollUpLines(n) => {
                 let n = self.apply_repeat_count(n);
                 self.scroll_up(n)

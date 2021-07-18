@@ -159,7 +159,7 @@ impl Binding {
                     | ScrollLeftScreenFraction(_)
                     | ScrollRightScreenFraction(_)
                     | PromptGoToLine => Category::Navigation,
-                    ToggleLineNumbers | ToggleLineWrapping => Category::Presentation,
+                    ToggleRuler | ToggleLineNumbers | ToggleLineWrapping => Category::Presentation,
                     PromptSearchFromStart
                     | PromptSearchForwards
                     | PromptSearchBackwards
@@ -200,6 +200,7 @@ impl Binding {
             "Cancel" => Cancel,
             "PreviousFile" => PreviousFile,
             "NextFile" => NextFile,
+            "ToggleRuler" => ToggleRuler,
             "ScrollUpLines" => ScrollUpLines(param_usize(0)?),
             "ScrollDownLines" => ScrollDownLines(param_usize(0)?),
             "ScrollUpScreenFraction" => ScrollUpScreenFraction(param_usize(0)?),

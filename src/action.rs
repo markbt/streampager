@@ -26,6 +26,9 @@ pub enum Action {
     /// Switch to the next file.
     NextFile,
 
+    /// Toggle visiblity of the ruler.
+    ToggleRuler,
+
     /// Scroll up *n* lines.
     ScrollUpLines(usize),
 
@@ -114,6 +117,7 @@ impl std::fmt::Display for Action {
             Cancel => write!(f, "Close help or any open prompt"),
             PreviousFile => write!(f, "Switch to the previous file"),
             NextFile => write!(f, "Switch to the next file"),
+            ToggleRuler => write!(f, "Toggle the ruler"),
             ScrollUpLines(1) => write!(f, "Scroll up"),
             ScrollUpLines(n) => write!(f, "Scroll up {} lines", n),
             ScrollDownLines(1) => write!(f, "Scroll down"),

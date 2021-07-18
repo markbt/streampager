@@ -216,6 +216,11 @@ impl Pager {
         self.config.startup_poll_input = poll_input;
     }
 
+    /// Set whether to show the ruler by default.
+    pub fn set_show_ruler(&mut self, show_ruler: bool) {
+        self.config.show_ruler = show_ruler;
+    }
+
     /// Set default wrapping mode. See [`WrappingMode`] for details.
     pub fn set_wrapping_mode(&mut self, value: impl Into<WrappingMode>) {
         self.config.wrapping_mode = value.into();

@@ -167,6 +167,9 @@ pub struct Config {
     /// Specify whether to poll input during start-up (delayed or direct mode).
     pub startup_poll_input: bool,
 
+    /// Specify whether to show the ruler by default.
+    pub show_ruler: bool,
+
     /// Specify default wrapping move.
     pub wrapping_mode: WrappingMode,
 
@@ -181,6 +184,7 @@ impl Default for Config {
             scroll_past_eof: true,
             read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
             startup_poll_input: true,
+            show_ruler: true,
             wrapping_mode: Default::default(),
             keymap: Default::default(),
         }

@@ -4,6 +4,7 @@ keymap! {
     CTRL 'C', 'q', ('Q') => Quit;
     Escape => Cancel;
     CTRL 'L', 'r' => Refresh;
+    CTRL 'R' => ToggleRuler;
     UpArrow, 'k', (CTRL 'K'), (CTRL 'P') => ScrollUpLines(1);
     DownArrow, 'j', (CTRL 'N'), Enter => ScrollDownLines(1);
     SHIFT UpArrow, (ApplicationUpArrow) => ScrollUpScreenFraction(4);
