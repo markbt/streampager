@@ -164,6 +164,9 @@ pub struct Config {
     /// Specify how many lines to read ahead.
     pub read_ahead_lines: usize,
 
+    /// Specify whether to poll input during start-up (delayed or direct mode).
+    pub startup_poll_input: bool,
+
     /// Specify default wrapping move.
     pub wrapping_mode: WrappingMode,
 
@@ -177,6 +180,7 @@ impl Default for Config {
             interface_mode: Default::default(),
             scroll_past_eof: true,
             read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
+            startup_poll_input: true,
             wrapping_mode: Default::default(),
             keymap: Default::default(),
         }

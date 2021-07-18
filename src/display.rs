@@ -185,6 +185,7 @@ pub(crate) fn start(
             progress.as_ref(),
             &mut events,
             config.interface_mode,
+            config.startup_poll_input,
         )?
     };
     match outcome {

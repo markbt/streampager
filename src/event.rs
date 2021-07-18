@@ -104,7 +104,7 @@ impl EventStream {
         ActionSender::new(self.sender())
     }
 
-    fn try_recv(&self) -> Result<Option<Event>, Error> {
+    pub(crate) fn try_recv(&self) -> Result<Option<Event>, Error> {
         match self.recv.try_recv() {
             Ok(Envelope::Normal(event)) => Ok(Some(event)),
             Ok(Envelope::Unique(event, unique)) => {

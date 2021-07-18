@@ -211,6 +211,11 @@ impl Pager {
         self.config.read_ahead_lines = lines;
     }
 
+    /// Set whether to poll input during start-up (delayed or direct mode).
+    pub fn set_startup_poll_input(&mut self, poll_input: bool) {
+        self.config.startup_poll_input = poll_input;
+    }
+
     /// Set default wrapping mode. See [`WrappingMode`] for details.
     pub fn set_wrapping_mode(&mut self, value: impl Into<WrappingMode>) {
         self.config.wrapping_mode = value.into();

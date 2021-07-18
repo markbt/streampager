@@ -116,6 +116,7 @@ varies by platform; on Linux it is typically `~/.config`.
 interface_mode = "delayed"
 scroll_past_eof = true
 read_ahead_lines = 20000
+startup_poll_input = true
 wrapping_mode = "word"
 keymap = "mykeymap"
 ```

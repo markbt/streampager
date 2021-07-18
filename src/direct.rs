@@ -64,6 +64,7 @@ pub(crate) fn direct<T: Terminal>(
     progress: Option<&Progress>,
     events: &mut EventStream,
     mode: InterfaceMode,
+    poll_input: bool,
 ) -> Result<Outcome> {
     if mode == InterfaceMode::FullScreen {
         return Ok(Outcome::RenderNothing);
@@ -138,8 +139,18 @@ pub(crate) fn direct<T: Terminal>(
     let mut size = term.get_screen_size().map_err(Error::Termwiz)?;
     let mut loaded = BitSet::with_capacity(loading.capacity());
     let mut remaining = output_files.len() + error_files.len();
+    let interval = Duration::from_millis(10);
     while remaining > 0 {
-        match events.get(term, Some(Duration::from_millis(10)))? {
+        let maybe_event = if poll_input {
+            events.get(term, Some(interval))?
+        } else {
+            events.try_recv()?.or_else(|| {
+                // Sleep to avoid busy wait
+                std::thread::sleep(interval);
+                None
+            })
+        };
+        match maybe_event {
             Some(Event::Loaded(i)) => {
                 if loading.contains(i) && loaded.insert(i) {
                     remaining -= 1;
