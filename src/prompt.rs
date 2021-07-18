@@ -387,7 +387,7 @@ impl Prompt {
                     }
                 }));
             }
-            (NONE, Escape) => {
+            (NONE, Escape) | (CTRL, Char('C')) => {
                 // Cancel.
                 return DisplayAction::Run(Box::new(|screen: &mut Screen| {
                     screen.clear_prompt();
