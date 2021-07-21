@@ -170,6 +170,9 @@ pub struct Config {
     /// Specify whether to show the ruler by default.
     pub show_ruler: bool,
 
+    /// Specify whether to show the cursor by default.
+    pub show_cursor: bool,
+
     /// Specify default wrapping move.
     pub wrapping_mode: WrappingMode,
 
@@ -185,6 +188,7 @@ impl Default for Config {
             read_ahead_lines: crate::file::DEFAULT_NEEDED_LINES,
             startup_poll_input: true,
             show_ruler: true,
+            show_cursor: false,
             wrapping_mode: Default::default(),
             keymap: Default::default(),
         }
