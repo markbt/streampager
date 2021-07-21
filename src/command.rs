@@ -7,7 +7,7 @@ use crate::error::Error;
 use crate::event::EventSender;
 use crate::file::FileInfo;
 use crate::prompt::Prompt;
-use crate::screen::Screen;
+use crate::screen::{Screen, Scroll};
 use crate::search::{MatchMotion, Search, SearchKind};
 
 /// Go to a line (Shortcut: ':')
@@ -37,7 +37,7 @@ pub(crate) fn goto() -> Prompt {
                                 value_percent += 100;
                             }
                             let value = value_percent * (lines - 1) / 100;
-                            screen.scroll_to(value as usize);
+                            screen.scroll_to(Scroll::Center(value as usize));
                         }
                         Err(e) => {
                             screen.error = Some(e.to_string());
@@ -56,7 +56,7 @@ pub(crate) fn goto() -> Prompt {
                             } else {
                                 value - 1
                             };
-                            screen.scroll_to(value as usize);
+                            screen.scroll_to(Scroll::Center(value as usize));
                         }
                         Err(e) => {
                             screen.error = Some(e.to_string());

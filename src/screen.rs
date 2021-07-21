@@ -193,7 +193,7 @@ pub(crate) struct Screen {
     following_end: bool,
 
     /// Scroll to a particular line in the file.
-    pending_absolute_scroll: Option<usize>,
+    pending_absolute_scroll: Option<Scroll>,
 
     /// Scroll relative number of rows.
     pending_relative_scroll: isize,
@@ -206,6 +206,15 @@ pub(crate) struct Screen {
 
     /// Repeat the next operation for the given times.
     repeat_count: Option<usize>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum Scroll {
+    /// Scroll to the given line and make it the center of the screen.
+    Center(usize),
+
+    /// Scroll to the given line and make it the top of the screen.
+    Top(usize),
 }
 
 impl Screen {
@@ -445,13 +454,19 @@ impl Screen {
         }
 
         // Perform pending absolute scroll
-        if let Some(line) = self.pending_absolute_scroll.take() {
-            self.top_line = line;
-            self.top_line_portion = 0;
-            pending_refresh.add_range(0, file_view_height);
-            // Scroll up so that the target line is in the center of the
-            // file view.
-            self.pending_relative_scroll -= (file_view_height / 2) as isize;
+        if let Some(scroll) = self.pending_absolute_scroll.take() {
+            match scroll {
+                Scroll::Top(line) | Scroll::Center(line) => {
+                    self.top_line = line;
+                    self.top_line_portion = 0;
+                    pending_refresh.add_range(0, file_view_height);
+                    if matches!(scroll, Scroll::Center(_)) {
+                        // Scroll up so that the target line is in the center of the
+                        // file view.
+                        self.pending_relative_scroll -= (file_view_height / 2) as isize;
+                    }
+                }
+            }
         }
 
         enum Direction {
@@ -1052,8 +1067,8 @@ impl Screen {
     }
 
     /// Scrolls to the given line number.
-    pub(crate) fn scroll_to(&mut self, line: usize) {
-        self.pending_absolute_scroll = Some(line);
+    pub(crate) fn scroll_to(&mut self, scroll: Scroll) {
+        self.pending_absolute_scroll = Some(scroll);
         self.pending_relative_scroll = 0;
         self.following_end = false;
     }
@@ -1164,10 +1179,10 @@ impl Screen {
             ScrollToTop | ScrollToBottom if self.repeat_count.is_some() => {
                 if let Some(n) = self.repeat_count {
                     // Convert 1-based to 0-based line number.
-                    self.scroll_to(n.max(1) - 1);
+                    self.scroll_to(Scroll::Center(n.max(1) - 1));
                 }
             }
-            ScrollToTop => self.scroll_to(0),
+            ScrollToTop => self.scroll_to(Scroll::Top(0)),
             ScrollToBottom => self.following_end = true,
             ScrollLeftColumns(n) => {
                 let n = self.apply_repeat_count(n);
@@ -1345,7 +1360,7 @@ impl Screen {
             .as_ref()
             .and_then(|ref search| search.current_match());
         if let Some((line_index, _match_index)) = current_match {
-            self.scroll_to(line_index);
+            self.scroll_to(Scroll::Center(line_index));
             self.refresh_matched_lines();
             self.refresh_overlay();
             return DisplayAction::Render;
@@ -1368,7 +1383,7 @@ impl Screen {
             let scope = self.rendered.top_line..=self.rendered.bottom_line;
             search.move_match(motion, scope);
             if let Some((line_index, _match_index)) = search.current_match() {
-                self.scroll_to(line_index);
+                self.scroll_to(Scroll::Center(line_index));
             }
             self.refresh_matched_line();
             self.refresh_search_status();
