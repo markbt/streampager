@@ -175,6 +175,9 @@ pub struct Config {
 
     /// Specify the name of the default key map.
     pub keymap: KeymapConfig,
+
+    /// Specify whether search is highlighted when typing.
+    pub highlight_search: bool,
 }
 
 impl Default for Config {
@@ -187,6 +190,7 @@ impl Default for Config {
             show_ruler: true,
             wrapping_mode: Default::default(),
             keymap: Default::default(),
+            highlight_search: true,
         }
     }
 }

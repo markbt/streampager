@@ -258,6 +258,16 @@ impl Screen {
         }
     }
 
+    /// Get the config.
+    pub(crate) fn config(&self) -> &Config {
+        &self.config
+    }
+
+    /// Get the rendered top line position.j
+    pub(crate) fn top_line(&self) -> usize {
+        self.top_line
+    }
+
     /// Get the screen width
     pub(crate) fn width(&self) -> usize {
         self.width
@@ -1210,18 +1220,24 @@ impl Screen {
             }
             PromptGoToLine => self.prompt = Some(command::goto()),
             PromptSearchFromStart => {
-                self.prompt = Some(command::search(SearchKind::First, event_sender.clone()))
+                self.prompt = Some(command::search(
+                    SearchKind::First,
+                    event_sender.clone(),
+                    self.config.highlight_search,
+                ))
             }
             PromptSearchForwards => {
                 self.prompt = Some(command::search(
                     SearchKind::FirstAfter(self.rendered.top_line),
                     event_sender.clone(),
+                    self.config.highlight_search,
                 ))
             }
             PromptSearchBackwards => {
                 self.prompt = Some(command::search(
                     SearchKind::FirstBefore(self.rendered.bottom_line),
                     event_sender.clone(),
+                    self.config.highlight_search,
                 ))
             }
             PreviousMatch => self.create_or_move_match(MatchMotion::Previous, event_sender.clone()),
@@ -1294,6 +1310,12 @@ impl Screen {
     pub(crate) fn set_search(&mut self, search: Option<Search>) {
         self.search = search;
         self.search_line_cache.clear();
+    }
+
+    /// Take the search. Useful for backing up the current search
+    /// and restore later.
+    pub(crate) fn take_search(&mut self) -> Option<Search> {
+        self.search.take()
     }
 
     /// Set the error file for this file.

@@ -72,27 +72,59 @@ pub(crate) fn goto() -> Prompt {
 /// Search for text (Shortcuts: '/', '<', '>')
 ///
 /// Prompts the user for text to search.
-pub(crate) fn search(kind: SearchKind, event_sender: EventSender) -> Prompt {
-    Prompt::new(
-        "search",
-        "Search:",
-        Box::new(
-            move |screen: &mut Screen, value: &str| -> Result<DisplayAction, Error> {
-                screen.refresh_matched_lines();
-                if value.is_empty() {
-                    match kind {
-                        SearchKind::First | SearchKind::FirstAfter(_) => {
-                            screen.move_match(MatchMotion::NextLine)
+pub(crate) fn search(kind: SearchKind, event_sender: EventSender, preview: bool) -> Prompt {
+    let mut prompt = {
+        let event_sender = event_sender.clone();
+        Prompt::new(
+            "search",
+            "Search:",
+            Box::new(
+                move |screen: &mut Screen, value: &str| -> Result<DisplayAction, Error> {
+                    screen.refresh_matched_lines();
+                    if value.is_empty() {
+                        match kind {
+                            SearchKind::First | SearchKind::FirstAfter(_) => {
+                                screen.move_match(MatchMotion::NextLine)
+                            }
+                            SearchKind::FirstBefore(_) => {
+                                screen.move_match(MatchMotion::PreviousLine)
+                            }
                         }
-                        SearchKind::FirstBefore(_) => screen.move_match(MatchMotion::PreviousLine),
+                    } else {
+                        screen.set_search(
+                            Search::new(&screen.file, value, kind, event_sender.clone()).ok(),
+                        );
                     }
-                } else {
-                    screen.set_search(
-                        Search::new(&screen.file, value, kind, event_sender.clone()).ok(),
-                    );
+                    Ok(DisplayAction::Render)
+                },
+            ),
+        )
+    };
+    if preview {
+        let mut orig_top = None;
+        let mut orig_search = None;
+        let preview = move |screen: &mut Screen, value: &str| -> Result<(), Error> {
+            if orig_top.is_none() {
+                // Remember the original top line position.
+                orig_top = Some(screen.top_line());
+                orig_search = screen.take_search();
+            }
+            screen.refresh_matched_lines();
+            if value.is_empty() {
+                // Cancel a search. Restore to the previous state.
+                screen.set_search(orig_search.take());
+                if let Some(top) = orig_top {
+                    // Restore the original top line position.
+                    screen.scroll_to(Scroll::Top(top));
                 }
-                Ok(DisplayAction::Render)
-            },
-        ),
-    )
+                orig_top = None;
+            } else {
+                screen
+                    .set_search(Search::new(&screen.file, value, kind, event_sender.clone()).ok());
+            }
+            Ok(())
+        };
+        prompt = prompt.with_preview(Box::new(preview));
+    }
+    prompt
 }

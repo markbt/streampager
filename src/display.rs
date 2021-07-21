@@ -292,11 +292,12 @@ pub(crate) fn start(
                 }
                 Some(Event::Input(InputEvent::Paste(ref text))) => {
                     let width = screen.width();
+                    let preview = screen.config().highlight_search;
                     screen
                         .prompt()
                         .get_or_insert_with(|| {
                             // Assume the user wanted to search for what they're pasting.
-                            command::search(SearchKind::First, event_sender.clone())
+                            command::search(SearchKind::First, event_sender.clone(), preview)
                         })
                         .paste(text, width)
                 }
