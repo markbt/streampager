@@ -1311,6 +1311,8 @@ impl Screen {
     pub(crate) fn set_search(&mut self, search: Option<Search>) {
         self.search = search;
         self.search_line_cache.clear();
+        self.refresh_search_status();
+        self.refresh_prompt();
     }
 
     /// Take the search. Useful for backing up the current search
