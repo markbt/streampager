@@ -27,6 +27,7 @@
 //! ```
 
 use std::cmp::{max, min};
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use termwiz::cell::{CellAttributes, Intensity};
@@ -1382,7 +1383,10 @@ impl Screen {
             .as_ref()
             .and_then(|ref search| search.current_match());
         if let Some((line_index, _match_index)) = current_match {
-            self.scroll_to(Scroll::Center(line_index));
+            let range = self.visible_line_range();
+            if !range.contains(&line_index) {
+                self.scroll_to(Scroll::Center(line_index));
+            }
             self.refresh_matched_lines();
             self.refresh_overlay();
             return DisplayAction::Render;
@@ -1398,14 +1402,21 @@ impl Screen {
         DisplayAction::Render
     }
 
+    /// Range of the visible lines.
+    pub(crate) fn visible_line_range(&self) -> RangeInclusive<usize> {
+        self.rendered.top_line..=self.rendered.bottom_line
+    }
+
     /// Move the currently selected match to a new match.
     pub(crate) fn move_match(&mut self, motion: MatchMotion) {
         self.refresh_matched_line();
+        let scope = self.visible_line_range();
         if let Some(ref mut search) = self.search {
-            let scope = self.rendered.top_line..=self.rendered.bottom_line;
-            search.move_match(motion, scope);
+            search.move_match(motion, scope.clone());
             if let Some((line_index, _match_index)) = search.current_match() {
-                self.scroll_to(Scroll::Center(line_index));
+                if !scope.contains(&line_index) {
+                    self.scroll_to(Scroll::Center(line_index));
+                }
             }
             self.refresh_matched_line();
             self.refresh_search_status();
