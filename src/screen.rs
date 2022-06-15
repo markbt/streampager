@@ -811,6 +811,9 @@ impl Screen {
                 x: Position::Absolute(0),
                 y: Position::Relative(0),
             });
+            if self.config.show_cursor {
+                changes.push(Change::CursorVisibility(CursorVisibility::Visible));
+            }
         }
 
         // Restore attributes to default.
