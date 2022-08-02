@@ -362,7 +362,7 @@ impl Span {
             Span::SgrSequence(ref s) => attr_state.apply_sgr_sequence(s),
             Span::Hyperlink(ref l) => attr_state.apply_hyperlink(l),
             Span::LineDrawing(e) => attr_state.line_drawing = e,
-            Span::EraseToEndOfLine => attr_state.end_of_line = attr_state.attrs.background,
+            Span::EraseToEndOfLine => attr_state.end_of_line = attr_state.attrs.background(),
             _ => {}
         }
         position
@@ -533,8 +533,8 @@ fn parse_spans(data: &[u8], match_index: Option<usize>) -> Vec<Span> {
                             }
                         }
                         Some(Action::Esc(Esc::Code(code))) => match code {
-                            EscCode::DecLineDrawing | EscCode::AsciiCharacterSet => {
-                                span = Some(Span::LineDrawing(code == EscCode::DecLineDrawing));
+                            EscCode::DecLineDrawingG0 | EscCode::AsciiCharacterSetG0 => {
+                                span = Some(Span::LineDrawing(code == EscCode::DecLineDrawingG0));
                                 skip_to = Some(index + len);
                             }
                             _ => {}

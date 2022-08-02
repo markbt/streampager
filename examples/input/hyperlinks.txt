@@ -1,0 +1,9 @@
+[1;36mHyperlinks[0m
+==========
+
+Using BEL: ]8;;https://crates.io/crates/streampagerstreampager]8;;
+Using Esc-encoded ST: ]8;;https://crates.io/crates/streampager\streampager]8;;\
+Using Unicode ST: ]8;;https://crates.io/crates/streampagerstreampager]8;;
+
+]8;;End.
+
