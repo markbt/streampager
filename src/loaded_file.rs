@@ -7,7 +7,7 @@ use std::cmp::{max, min};
 use std::ffi::OsStr;
 use std::fs::File as StdFile;
 use std::io::{Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -40,7 +40,6 @@ enum FileData {
 
     /// Data content should be read from a file on disk.
     File {
-        path: PathBuf,
         buffer_cache: Arc<Mutex<BufferCache>>,
         events: mpsc::Sender<FileEvent>,
     },
@@ -404,9 +403,7 @@ impl FileData {
             })
             .unwrap();
 
-        let path = path.to_path_buf();
         Ok(FileData::File {
-            path,
             buffer_cache,
             events,
         })
