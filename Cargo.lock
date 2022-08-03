@@ -1164,9 +1164,9 @@ dependencies = [
 
 [[package]]
 name = "termwiz"
-version = "0.17.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5c586445f41f51f51c3154a6ff5ebfe73046416bab279c4335f762822e7777d"
+checksum = "8afe4dd464afed784e203297d2af3dbe833fbded166a484587102cac73e56ff1"
 dependencies = [
  "anyhow",
  "base64",
