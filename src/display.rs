@@ -252,6 +252,8 @@ pub(crate) fn start(
         };
         let event = events.get(&mut *term, timeout)?;
 
+        term.start_synchronized_output().map_err(Error::Termwiz)?;
+
         // Dispatch the event and receive an action to take.
         let mut action = {
             let screen = screens.current();
@@ -407,5 +409,8 @@ pub(crate) fn start(
                 }
             }
         }
+
+        term.end_synchronized_output().map_err(Error::Termwiz)?;
+        term.flush().map_err(Error::Termwiz)?;
     }
 }
