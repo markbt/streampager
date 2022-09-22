@@ -131,6 +131,9 @@ impl AttributeState {
                 Sgr::Overline(enable) => {
                     self.attrs.set_overline(enable);
                 }
+                Sgr::VerticalAlign(align) => {
+                    self.attrs.set_vertical_align(align);
+                }
             }
         }
         self.changed = true;

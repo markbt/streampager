@@ -46,7 +46,7 @@ serde = {version="1.0", features=["derive"]}
 smallvec = "1.1.0"
 tempfile = "3.1.0"
 terminfo = "0.7"
-termwiz = "0.17.1"
+termwiz = "0.18"
 toml = "0.5.6"
 unicode-segmentation = "1.2.1"
 unicode-width = "0.1.5"
