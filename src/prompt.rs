@@ -2,6 +2,8 @@
 
 use std::char;
 use std::fmt::Write;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use termwiz::cell::{AttributeChange, CellAttributes};
 use termwiz::color::{AnsiColor, ColorAttribute};
@@ -17,6 +19,7 @@ use crate::screen::Screen;
 use crate::util;
 
 type PromptRunFn = dyn FnMut(&mut Screen, &str) -> Result<DisplayAction, Error>;
+type PromptPreviewFn = dyn FnMut(&mut Screen, &str) -> Result<(), Error>;
 
 /// A prompt for input from the user.
 pub(crate) struct Prompt {
@@ -28,6 +31,10 @@ pub(crate) struct Prompt {
 
     /// The closure to run when the user presses Return.  Will only be called once.
     run: Option<Box<PromptRunFn>>,
+
+    /// The closure to run when the user changes input.
+    /// Also called with empty text when the prompt is canceled.
+    preview: Option<Arc<Mutex<Box<PromptPreviewFn>>>>,
 }
 
 pub(crate) struct PromptState {
@@ -330,7 +337,13 @@ impl Prompt {
             prompt: prompt.to_string(),
             history: PromptHistory::open(ident),
             run: Some(run),
+            preview: None,
         }
+    }
+
+    pub(crate) fn with_preview(mut self, preview: Box<PromptPreviewFn>) -> Self {
+        self.preview = Some(Arc::new(Mutex::new(preview)));
+        self
     }
 
     fn state(&self) -> &PromptState {
@@ -365,6 +378,11 @@ impl Prompt {
         self.state_mut().render(changes, offset, width);
     }
 
+    /// Current text input by the user.
+    fn value(&self) -> String {
+        self.state().value[..].iter().collect()
+    }
+
     /// Dispatch a key press to the prompt.
     pub(crate) fn dispatch_key(&mut self, key: KeyEvent, width: usize) -> DisplayAction {
         use termwiz::input::{KeyCode::*, Modifiers};
@@ -372,12 +390,12 @@ impl Prompt {
         const NONE: Modifiers = Modifiers::NONE;
         const ALT: Modifiers = Modifiers::ALT;
         let value_width = width - self.prompt.width() - 4;
+        let value: String = self.value();
         let action = match (key.modifiers, key.key) {
             (NONE, Enter) | (CTRL, Char('J')) | (CTRL, Char('M')) => {
                 // Finish.
                 let _ = self.history.save();
                 let mut run = self.run.take();
-                let value: String = self.state().value[..].iter().collect();
                 return DisplayAction::Run(Box::new(move |screen: &mut Screen| {
                     screen.clear_prompt();
                     if let Some(ref mut run) = run {
@@ -389,7 +407,12 @@ impl Prompt {
             }
             (NONE, Escape) | (CTRL, Char('C')) => {
                 // Cancel.
-                return DisplayAction::Run(Box::new(|screen: &mut Screen| {
+                let preview = self.preview.clone();
+                return DisplayAction::Run(Box::new(move |screen: &mut Screen| {
+                    if let Some(preview) = &preview {
+                        let mut preview = preview.lock().unwrap();
+                        preview(screen, "")?;
+                    }
                     screen.clear_prompt();
                     Ok(DisplayAction::Render)
                 }));
@@ -413,6 +436,16 @@ impl Prompt {
             _ => return DisplayAction::None,
         };
         self.state_mut().clamp_offset(value_width);
+        let new_value: String = self.value();
+        if let Some(preview) = self.preview.clone() {
+            if value != new_value && !matches!(action, DisplayAction::Run(_)) {
+                return DisplayAction::Run(Box::new(move |screen: &mut Screen| {
+                    let mut preview = preview.lock().unwrap();
+                    preview(screen, &new_value)?;
+                    Ok(DisplayAction::Render)
+                }));
+            }
+        }
         action
     }
 

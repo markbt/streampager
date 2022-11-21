@@ -241,6 +241,11 @@ impl Pager {
         self.events.action_sender()
     }
 
+    /// Configure the pager.
+    pub fn configure(&mut self, mut func: impl FnMut(&mut Config)) {
+        func(&mut self.config)
+    }
+
     /// Run Stream Pager.
     pub fn run(self) -> Result<()> {
         crate::display::start(
